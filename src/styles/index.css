@@ -1,0 +1,333 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ================================================================
+   设计令牌 —— 浅色主题
+   底用暖灰白（不是纯白），层次靠极浅的灰阶与细描边递进。
+   主色仍用青绿，但在浅底上要把饱和度压一档，否则会发荧光。
+   ================================================================ */
+:root {
+  --bg-root: #f4f6f8;
+  --bg-panel: #ffffff;
+  --bg-raised: #fafbfc;
+  --bg-hover: #f0f2f5;
+  --bg-active: #e8ecf1;
+  --bg-inset: #eef1f4;
+
+  --border-subtle: rgba(16, 24, 40, 0.07);
+  --border-default: rgba(16, 24, 40, 0.11);
+  --border-strong: rgba(16, 24, 40, 0.18);
+
+  --text-primary: #12171f;
+  --text-secondary: #5b6473;
+  --text-muted: #8b94a3;
+  --text-faint: #a8b0bd;
+
+  --accent: #0f9d70;
+  --accent-hover: #0c8a61;
+  --accent-soft: rgba(15, 157, 112, 0.1);
+  --danger: #dc2f4b;
+  --warn: #d97706;
+  --info: #0891a8;
+
+  /* 统一动效曲线 */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-soft: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 150ms;
+  --dur-base: 220ms;
+  --dur-slow: 320ms;
+
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-md: 0 2px 8px -2px rgba(16, 24, 40, 0.08), 0 1px 3px rgba(16, 24, 40, 0.04);
+  --shadow-lg: 0 12px 32px -12px rgba(16, 24, 40, 0.18);
+  --shadow-xl: 0 24px 64px -20px rgba(16, 24, 40, 0.24);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg-root);
+  color: var(--text-primary);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI',
+    'Microsoft YaHei', sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 滚动条：浅底上要够淡，别抢视线 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(16, 24, 40, 0.14);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background var(--dur-fast) var(--ease-out-soft);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 24, 40, 0.26);
+  background-clip: padding-box;
+}
+
+::selection {
+  background: rgba(15, 157, 112, 0.2);
+}
+
+:focus-visible {
+  outline: 2px solid rgba(15, 157, 112, 0.5);
+  outline-offset: 2px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ================================================================
+   组件层
+   ================================================================ */
+@layer components {
+  .panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 14px;
+    box-shadow: var(--shadow-md);
+  }
+
+  .panel-flat {
+    background: var(--bg-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: 14px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    transition: background var(--dur-fast) var(--ease-out-soft),
+      border-color var(--dur-fast) var(--ease-out-soft),
+      color var(--dur-fast) var(--ease-out-soft),
+      transform var(--dur-fast) var(--ease-out-soft),
+      box-shadow var(--dur-fast) var(--ease-out-soft);
+  }
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    font-weight: 550;
+    box-shadow: 0 1px 2px rgba(15, 157, 112, 0.28);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+    box-shadow: 0 3px 10px -2px rgba(15, 157, 112, 0.42);
+  }
+
+  .btn-ghost {
+    background: #fff;
+    color: var(--text-secondary);
+    border-color: var(--border-default);
+    box-shadow: var(--shadow-sm);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-strong);
+  }
+
+  .btn-soft {
+    background: var(--bg-inset);
+    color: var(--text-primary);
+  }
+  .btn-soft:hover:not(:disabled) {
+    background: var(--bg-active);
+  }
+
+  .btn-danger {
+    background: rgba(220, 47, 75, 0.07);
+    color: var(--danger);
+    border-color: rgba(220, 47, 75, 0.2);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: rgba(220, 47, 75, 0.12);
+    border-color: rgba(220, 47, 75, 0.34);
+  }
+
+  .field {
+    width: 100%;
+    height: 34px;
+    padding: 0 11px;
+    background: #fff;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 12.5px;
+    font-family: inherit;
+    transition: border-color var(--dur-fast) var(--ease-out-soft),
+      background var(--dur-fast) var(--ease-out-soft),
+      box-shadow var(--dur-fast) var(--ease-out-soft);
+  }
+  .field::placeholder {
+    color: var(--text-faint);
+  }
+  .field:hover:not(:disabled) {
+    border-color: var(--border-strong);
+  }
+  .field:focus {
+    outline: none;
+    border-color: rgba(15, 157, 112, 0.55);
+    box-shadow: 0 0 0 3px rgba(15, 157, 112, 0.1);
+  }
+
+  textarea.field {
+    height: auto;
+    padding: 9px 11px;
+    line-height: 1.6;
+    resize: vertical;
+  }
+
+  .label {
+    display: block;
+    font-size: 11.5px;
+    font-weight: 550;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    letter-spacing: 0.01em;
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
+
+  .th {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: left;
+    padding: 0 12px;
+    height: 36px;
+    white-space: nowrap;
+  }
+
+  .td {
+    padding: 0 12px;
+    height: 50px;
+    font-size: 12.5px;
+    color: var(--text-primary);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .row-interactive {
+    transition: background var(--dur-fast) var(--ease-out-soft);
+    cursor: pointer;
+  }
+  .row-interactive:hover {
+    background: var(--bg-hover);
+  }
+
+  .kv-label {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    margin-bottom: 3px;
+  }
+  .kv-value {
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 7px;
+    border-radius: 5px;
+    font-size: 10.5px;
+    font-weight: 500;
+    background: var(--bg-inset);
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      rgba(16, 24, 40, 0.045) 25%,
+      rgba(16, 24, 40, 0.085) 37%,
+      rgba(16, 24, 40, 0.045) 63%
+    );
+    background-size: 400% 100%;
+    animation: shimmer 1.6s ease-in-out infinite;
+    border-radius: 6px;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.drag-region {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+.xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+}
+
+/* 行数不足以触发滚动时，隐藏滚动条槽，避免列表右侧出现一条空轨道 */
+.hide-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+.hide-scrollbar {
+  scrollbar-width: none;
+}
+

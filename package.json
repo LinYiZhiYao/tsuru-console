@@ -1,0 +1,94 @@
+{
+  "name": "tsuru-console",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tsuru Console - 鹤 · 现代化多云多服务器运维控制台",
+  "main": "dist-electron/main.js",
+  "author": "Linyizhi",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "electron:build:main": "tsc -p tsconfig.electron.json",
+    "electron:dev": "npm run electron:build:main && cross-env NEBULA_DEV=1 electron .",
+    "start": "concurrently -k -n VITE,ELECTRON -c cyan,green \"vite\" \"wait-on tcp:5273 && npm run electron:build:main && cross-env NEBULA_DEV=1 electron .\"",
+    "start:gpu-off": "concurrently -k -n VITE,ELECTRON -c cyan,green \"vite\" \"wait-on tcp:5273 && npm run electron:build:main && cross-env NEBULA_DEV=1 NEBULA_DISABLE_GPU=1 electron .\"",
+    "dev:all": "npm run start",
+    "dist": "node prepare-dist.cjs && npm run build && npm run electron:build:main && cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ electron-builder --win && node fix-icon.cjs",
+    "dist:portable": "node prepare-dist.cjs && npm run build && npm run electron:build:main && cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ electron-builder --win --dir && node fix-icon.cjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-ec2": "^3.700.0",
+    "@aws-sdk/client-sts": "^3.700.0",
+    "ssh2": "^1.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/ssh2": "^1.15.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3",
+    "echarts": "^5.5.1",
+    "echarts-for-react": "^3.0.2",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "framer-motion": "^11.13.1",
+    "lucide-react": "^0.468.0",
+    "playwright": "^1.65.0",
+    "postcss": "^8.4.49",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "wait-on": "^8.0.1",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0",
+    "xterm-addon-web-links": "^0.9.0",
+    "zustand": "^5.0.2"
+  },
+  "build": {
+    "appId": "com.tsuru.console",
+    "productName": "Tsuru Console",
+    "directories": {
+      "output": "release-build-20261112-224614",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "build/icon.png",
+      "package.json",
+      "!**/node_modules/cpu-features/**",
+      "!**/node_modules/nan/**"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/ssh2/**"
+    ],
+    "npmRebuild": false,
+    "win": {
+      "signAndEditExecutable": false,
+      "icon": "icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Tsuru Console"
+    }
+  }
+}
