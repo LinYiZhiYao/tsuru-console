@@ -89,16 +89,16 @@ function createWindow() {
     minWidth: 1080,
     minHeight: 680,
     show: false,
-    backgroundColor: '#f6f7f9',
+    backgroundColor: '#f0f4f9',
     title: 'Tsuru Console',
     // 开发时在项目 build/ 下；打包后随 files 进入 asar，与 dist-electron 同级
     icon: path.join(__dirname, '../build/icon.png'),
     titleBarStyle: 'hidden',
     titleBarOverlay: {
-      color: '#ffffff',
-      symbolColor: '#6b7484',
-      // 与 TitleBar 的 h-[52px] 对齐，否则原生按钮会和自定义标题内容垂直错位
-      height: 52,
+      color: '#f0f4f9',
+      symbolColor: '#444746',
+      // 与 TitleBar 的 h-[54px] 对齐，否则原生按钮会和自定义标题内容垂直错位
+      height: 54,
     },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

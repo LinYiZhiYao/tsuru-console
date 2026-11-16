@@ -3,30 +3,33 @@
 @tailwind utilities;
 
 /* ================================================================
-   设计令牌 —— 浅色主题
-   底用暖灰白（不是纯白），层次靠极浅的灰阶与细描边递进。
-   主色仍用青绿，但在浅底上要把饱和度压一档，否则会发荧光。
+   设计令牌 —— Tsuru Console 浅色流体设计系统
+   采用冷瓷蓝灰基底 (#f0f4f9) 与纯白悬浮卡片 (#ffffff) 构建清晰层级，
+   融入极光青蓝渐变与胶囊交互，针对桌面端零 GPU 模糊规范优化至恒定高帧率。
    ================================================================ */
 :root {
-  --bg-root: #f4f6f8;
+  --bg-root: #f0f4f9;
+  --bg-canvas: #f8fafd;
   --bg-panel: #ffffff;
-  --bg-raised: #fafbfc;
-  --bg-hover: #f0f2f5;
-  --bg-active: #e8ecf1;
-  --bg-inset: #eef1f4;
+  --bg-raised: #f8fafd;
+  --bg-hover: #e9eef6;
+  --bg-active: #dde3ea;
+  --bg-inset: #e9eef6;
 
-  --border-subtle: rgba(16, 24, 40, 0.07);
-  --border-default: rgba(16, 24, 40, 0.11);
-  --border-strong: rgba(16, 24, 40, 0.18);
+  --border-subtle: rgba(15, 23, 42, 0.06);
+  --border-default: rgba(15, 23, 42, 0.09);
+  --border-strong: rgba(15, 23, 42, 0.16);
 
-  --text-primary: #12171f;
-  --text-secondary: #5b6473;
-  --text-muted: #8b94a3;
-  --text-faint: #a8b0bd;
+  --text-primary: #1f1f1f;
+  --text-secondary: #444746;
+  --text-muted: #747775;
+  --text-faint: #9aa0a6;
 
   --accent: #0f9d70;
   --accent-hover: #0c8a61;
   --accent-soft: rgba(15, 157, 112, 0.1);
+  --brand-blue: #1b6ef3;
+  --brand-violet: #7c3aed;
   --danger: #dc2f4b;
   --warn: #d97706;
   --info: #0891a8;
@@ -34,14 +37,14 @@
   /* 统一动效曲线 */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out-soft: cubic-bezier(0.4, 0, 0.2, 1);
-  --dur-fast: 150ms;
-  --dur-base: 220ms;
-  --dur-slow: 320ms;
+  --dur-fast: 140ms;
+  --dur-base: 180ms;
+  --dur-slow: 260ms;
 
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
-  --shadow-md: 0 2px 8px -2px rgba(16, 24, 40, 0.08), 0 1px 3px rgba(16, 24, 40, 0.04);
-  --shadow-lg: 0 12px 32px -12px rgba(16, 24, 40, 0.18);
-  --shadow-xl: 0 24px 64px -20px rgba(16, 24, 40, 0.24);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 1px 4px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
+  --shadow-lg: 0 8px 20px -8px rgba(15, 23, 42, 0.12);
+  --shadow-xl: 0 16px 36px -14px rgba(15, 23, 42, 0.18);
 }
 
 * {
@@ -56,7 +59,7 @@ body,
   overflow: hidden;
 }
 
-body {
+  body {
   background: var(--bg-root);
   color: var(--text-primary);
   font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI',
@@ -68,26 +71,26 @@ body {
 
 /* 滚动条：浅底上要够淡，别抢视线 */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(16, 24, 40, 0.14);
-  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.13);
+  border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
   transition: background var(--dur-fast) var(--ease-out-soft);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(16, 24, 40, 0.26);
+  background: rgba(15, 23, 42, 0.25);
   background-clip: padding-box;
 }
 
 ::selection {
-  background: rgba(15, 157, 112, 0.2);
+  background: rgba(27, 110, 243, 0.16);
 }
 
 :focus-visible {
@@ -105,14 +108,70 @@ body {
   .panel {
     background: var(--bg-panel);
     border: 1px solid var(--border-subtle);
-    border-radius: 14px;
+    border-radius: 16px;
     box-shadow: var(--shadow-md);
   }
 
   .panel-flat {
     background: var(--bg-raised);
     border: 1px solid var(--border-subtle);
-    border-radius: 14px;
+    border-radius: 16px;
+  }
+
+  /* 极光渐变文字 */
+  .aurora-text {
+    background: linear-gradient(135deg, #1b6ef3 0%, #7c3aed 48%, #0f9d70 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* 悬浮智能指令输入舱（轻量低开销描边高亮） */
+  .omni-bar {
+    background: #ffffff;
+    border-radius: 9999px;
+    border: 1px solid rgba(15, 23, 42, 0.09);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+    transition: border-color 140ms var(--ease-out-soft),
+      background-color 140ms var(--ease-out-soft);
+  }
+  .omni-bar:hover {
+    border-color: rgba(27, 110, 243, 0.28);
+  }
+  .omni-bar:focus-within {
+    border-color: rgba(15, 157, 112, 0.55);
+    box-shadow: 0 0 0 2px rgba(15, 157, 112, 0.14);
+  }
+
+  /* 快捷建议胶囊 Chip */
+  .quick-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 12px;
+    border-radius: 9999px;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #444746;
+    background: #f0f4f9;
+    border: 1px solid rgba(15, 23, 42, 0.06);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    transition: background-color 140ms var(--ease-out-soft),
+      border-color 140ms var(--ease-out-soft),
+      color 140ms var(--ease-out-soft),
+      transform 140ms var(--ease-out-soft);
+  }
+  .quick-chip:hover:not(:disabled) {
+    background: #e1e9f4;
+    color: #1f1f1f;
+    border-color: rgba(27, 110, 243, 0.22);
+    transform: translateY(-1px);
+  }
+  .quick-chip:active:not(:disabled) {
+    transform: scale(0.97);
   }
 
   .btn {
@@ -121,19 +180,18 @@ body {
     justify-content: center;
     gap: 6px;
     height: 32px;
-    padding: 0 12px;
-    border-radius: 8px;
+    padding: 0 14px;
+    border-radius: 9999px;
     font-size: 12.5px;
     font-weight: 500;
     border: 1px solid transparent;
     cursor: pointer;
     user-select: none;
     white-space: nowrap;
-    transition: background var(--dur-fast) var(--ease-out-soft),
+    transition: background-color var(--dur-fast) var(--ease-out-soft),
       border-color var(--dur-fast) var(--ease-out-soft),
       color var(--dur-fast) var(--ease-out-soft),
-      transform var(--dur-fast) var(--ease-out-soft),
-      box-shadow var(--dur-fast) var(--ease-out-soft);
+      transform var(--dur-fast) var(--ease-out-soft);
   }
   .btn:active:not(:disabled) {
     transform: scale(0.97);
@@ -144,14 +202,23 @@ body {
   }
 
   .btn-primary {
-    background: var(--accent);
+    background: linear-gradient(135deg, #0f9d70 0%, #0891a8 100%);
     color: #fff;
     font-weight: 550;
-    box-shadow: 0 1px 2px rgba(15, 157, 112, 0.28);
+    box-shadow: 0 1px 3px rgba(15, 157, 112, 0.25);
   }
   .btn-primary:hover:not(:disabled) {
-    background: var(--accent-hover);
-    box-shadow: 0 3px 10px -2px rgba(15, 157, 112, 0.42);
+    background: linear-gradient(135deg, #0c8a61 0%, #077f94 100%);
+  }
+
+  .btn-aurora {
+    background: linear-gradient(135deg, #1b6ef3 0%, #6d28d9 52%, #0f9d70 100%);
+    color: #fff;
+    font-weight: 550;
+    box-shadow: 0 1px 3px rgba(27, 110, 243, 0.24);
+  }
+  .btn-aurora:hover:not(:disabled) {
+    opacity: 0.94;
   }
 
   .btn-ghost {
@@ -187,10 +254,10 @@ body {
   .field {
     width: 100%;
     height: 34px;
-    padding: 0 11px;
+    padding: 0 12px;
     background: #fff;
     border: 1px solid var(--border-default);
-    border-radius: 8px;
+    border-radius: 11px;
     color: var(--text-primary);
     font-size: 12.5px;
     font-family: inherit;

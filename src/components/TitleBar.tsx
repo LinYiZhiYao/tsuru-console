@@ -1,19 +1,19 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, Plus, RefreshCw, Search } from 'lucide-react';
+import { Bell, Plus, RefreshCw, Sparkles } from 'lucide-react';
 import { useApp } from '@/stores/app';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, memo } from 'react';
 
 /** 每个路由对应的标题与副标题 */
 const TITLES: Record<string, { title: string; sub: string }> = {
-  dashboard: { title: '总览', sub: '所有纳管资源的状态摘要' },
-  servers: { title: '服务器', sub: '纳管的服务器列表与连接管理' },
-  server: { title: '服务器详情', sub: '实时监控、终端与文件' },
-  terminal: { title: '终端', sub: '在多台服务器上开 SSH 会话' },
-  cloud: { title: '云资源', sub: 'AWS / 阿里云实例同步与电源操作' },
-  monitor: { title: '监控', sub: '指标曲线与采样历史' },
-  batch: { title: '批量运维', sub: '一次命令，多机执行' },
-  alerts: { title: '告警', sub: '阈值规则与告警记录' },
-  settings: { title: '设置', sub: '凭据、存储与关于' },
+  dashboard: { title: '总览中心', sub: '全域云主机状态、指标与快速指令' },
+  servers: { title: '服务器资产', sub: '纳管节点列表、连通性探测与管理' },
+  server: { title: '节点工作台', sub: '实时指标、智能体检、系统日志与终端' },
+  terminal: { title: '交互式终端', sub: '多标签并发 SSH 会话矩阵' },
+  cloud: { title: '多云资源', sub: 'AWS / 阿里云实例同步与电源控制' },
+  monitor: { title: '指标监控', sub: '多维历史时序曲线与负载透视' },
+  batch: { title: '批量运维', sub: '一次编排，多节点并发执行' },
+  alerts: { title: '告警中心', sub: '动态阈值策略与异常事件追踪' },
+  settings: { title: '系统设置', sub: '安全凭据库、数据存储与版本信息' },
 };
 
 interface TitleBarProps {
@@ -22,10 +22,23 @@ interface TitleBarProps {
   onOpenPalette?: () => void;
 }
 
+/** 独立时钟组件，避免每秒触发整条标题栏重渲染 */
+const LiveClock = memo(function LiveClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 5000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="hidden lg:flex items-center gap-1.5 mr-1 px-2.5 py-1 rounded-full bg-white border border-[rgba(15,23,42,0.06)] text-[10.5px] font-mono text-[#5b6473]">
+      <span className="w-[6px] h-[6px] rounded-full bg-[#0f9d70]" />
+      {now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}
+    </div>
+  );
+});
+
 /**
- * 顶部标题栏。
- * 左侧是拖拽区（Electron titleBarStyle: hidden），右侧是操作按钮。
- * 标题切换时做交叉淡入 + 轻微上移，避免文字「闪一下」。
+ * 顶部标题栏（融合居中智能指令舱入口）。
  */
 export function TitleBar({ onAddServer, onRefresh, onOpenPalette }: TitleBarProps) {
   const route = useApp((s) => s.route);
@@ -33,72 +46,70 @@ export function TitleBar({ onAddServer, onRefresh, onOpenPalette }: TitleBarProp
   const unacked = useApp((s) => s.unackedCount);
   const navigate = useApp((s) => s.navigate);
 
-  // 当前时间，每秒刷新，作为「应用还在跑」的活体指示
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-
   return (
     <header
-      className="drag-region h-[52px] flex items-center justify-between pl-5 shrink-0 border-b"
+      className="drag-region h-[54px] flex items-center justify-between pl-4 shrink-0"
       style={{
-        borderColor: 'rgba(16,24,40,0.06)',
-        background: '#ffffff',
-        // 右侧给 Windows 原生窗口控制按钮（最小化/最大化/关闭）留位。
-        // titleBarOverlay 的按钮是浮在 webContents 之上的，不留位会被盖住。
+        background: '#f0f4f9',
         paddingRight: 148,
       }}
     >
-      <div className="min-w-0 relative h-full flex flex-col justify-center">
+      {/* 左侧当前视图标题 */}
+      <div className="min-w-[160px] relative h-full flex flex-col justify-center">
         <AnimatePresence mode="wait">
           <motion.div
             key={route.name}
-            initial={{ opacity: 0, y: 4 }}
+            initial={{ opacity: 0, y: 3 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4, transition: { duration: 0.12 } }}
-            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            exit={{ opacity: 0, transition: { duration: 0.08 } }}
+            transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
           >
-            <h1 className="text-[14px] font-semibold text-[#12171f] leading-tight tracking-tight">
+            <h1 className="text-[14.5px] font-bold text-[#1f1f1f] leading-tight tracking-tight">
               {meta.title}
             </h1>
-            <p className="text-[10.5px] text-[#a8b0bd] leading-tight mt-0.5">{meta.sub}</p>
+            <p className="text-[10.5px] text-[#747775] leading-tight mt-0.5 truncate">{meta.sub}</p>
           </motion.div>
         </AnimatePresence>
       </div>
 
-      <div className="flex items-center gap-1.5 no-drag">
-        {/* 全局命令与搜索快捷入口 */}
+      {/* 中部：全局智能指令舱入口 */}
+      <div className="flex-1 max-w-[440px] mx-4 no-drag hidden sm:block">
         <button
           onClick={onOpenPalette}
-          className="flex items-center gap-2 h-[28px] px-2.5 mr-1 rounded-lg text-[11.5px] text-[#8b94a3] hover:text-[#12171f] hover:bg-[rgba(16,24,40,0.06)] border border-[rgba(16,24,40,0.07)] transition-all duration-150"
-          title="全局快速搜索 / 指令面板 (Ctrl+K)"
+          className="omni-bar w-full h-[35px] px-3.5 flex items-center justify-between text-left group"
+          title="呼出全局指令与快速执行舱 (Ctrl+K)"
         >
-          <Search size={12} className="text-[#8b94a3]" />
-          <span className="hidden sm:inline">搜索或输入指令…</span>
-          <kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[rgba(16,24,40,0.05)] border border-[rgba(16,24,40,0.08)] leading-none">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Sparkles
+              size={14}
+              className="text-[#1b6ef3] group-hover:scale-110 transition-transform duration-150 shrink-0"
+            />
+            <span className="text-[12px] text-[#5b6473] group-hover:text-[#1f1f1f] truncate transition-colors duration-150">
+              搜索主机、跳转功能，或输入 <code className="font-mono text-[#0f9d70]">&gt; 命令</code> 直接执行…
+            </span>
+          </div>
+          <kbd className="px-2 py-0.5 rounded-full text-[10px] font-mono text-[#5b6473] bg-[#f0f4f9] border border-[rgba(15,23,42,0.08)] leading-none shrink-0 ml-2">
             Ctrl K
           </kbd>
         </button>
+      </div>
 
-        <div className="hidden md:flex items-center gap-1.5 mr-1 text-[10.5px] font-mono text-[#a8b0bd]">
-          <span className="w-[5px] h-[5px] rounded-full bg-[#0f9d70] animate-pulse" />
-          {now.toLocaleTimeString('zh-CN', { hour12: false })}
-        </div>
+      {/* 右侧快捷工具区 */}
+      <div className="flex items-center gap-1.5 no-drag">
+        <LiveClock />
 
         <button
           onClick={onRefresh}
-          className="p-1.5 rounded-lg text-[#6b7484] hover:text-[#12171f] hover:bg-[rgba(16,24,40,0.06)] transition-all duration-150"
-          title="刷新"
+          className="w-8 h-8 rounded-full flex items-center justify-center text-[#5b6473] hover:text-[#1f1f1f] hover:bg-white transition-colors duration-150"
+          title="全局刷新"
         >
           <RefreshCw size={14} />
         </button>
 
         <button
           onClick={() => navigate({ name: 'alerts' })}
-          className="relative p-1.5 rounded-lg text-[#6b7484] hover:text-[#12171f] hover:bg-[rgba(16,24,40,0.06)] transition-all duration-150"
-          title="告警"
+          className="relative w-8 h-8 rounded-full flex items-center justify-center text-[#5b6473] hover:text-[#1f1f1f] hover:bg-white transition-colors duration-150"
+          title="告警中心"
         >
           <Bell size={14} />
           <AnimatePresence>
@@ -107,9 +118,9 @@ export function TitleBar({ onAddServer, onRefresh, onOpenPalette }: TitleBarProp
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 exit={{ scale: 0 }}
-                transition={{ type: 'spring', stiffness: 600, damping: 20 }}
-                className="absolute top-1 right-1 w-[6px] h-[6px] rounded-full"
-                style={{ background: '#dc2f4b', boxShadow: '0 0 8px rgba(220,47,75,0.7)' }}
+                transition={{ duration: 0.16 }}
+                className="absolute top-1.5 right-1.5 w-[6.5px] h-[6.5px] rounded-full"
+                style={{ background: '#dc2f4b' }}
               />
             )}
           </AnimatePresence>
@@ -119,9 +130,9 @@ export function TitleBar({ onAddServer, onRefresh, onOpenPalette }: TitleBarProp
           <button
             onClick={onAddServer}
             className="btn btn-primary ml-1"
-            style={{ height: 30, padding: '0 11px' }}
+            style={{ height: 32, padding: '0 13px' }}
           >
-            <Plus size={13} strokeWidth={2.6} />
+            <Plus size={13} strokeWidth={2.5} />
             添加服务器
           </button>
         )}

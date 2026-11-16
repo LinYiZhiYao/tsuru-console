@@ -1,9 +1,8 @@
-import { Client, type ConnectConfig, type ClientChannel } from 'ssh2';
-import { EventEmitter } from 'events';
+import { Client, type ConnectConfig, type ClientChannel, type SFTPWrapper } from 'ssh2';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import { db, vault } from '../db';
+import { vault } from '../db';
 import type { ServerRecord, ServerSecret, RemoteFileEntry, MetricSample, ProcessInfo, SystemServiceInfo, DockerContainerInfo } from '../types';
 
 /** 一个活跃的交互式终端会话 */
@@ -59,7 +58,7 @@ function baseConfig(server: ServerRecord): ConnectConfig {
   } as ConnectConfig;
 }
 
-/** 建立一次性连接（用于探测、执行命令、读文件），用完即断 */
+/** 建立一次性连接（用于探测与草稿测试），用完即断 */
 export async function connectTransient(
   server: ServerRecord,
   overrideSecret?: Partial<ServerSecret>,
@@ -91,42 +90,161 @@ export async function connectTransient(
   });
 }
 
-/** 执行一条命令并收集输出 */
+/* ------------------------------------------------------------------ */
+/*  SSH 连接复用池（大幅消除高延迟节点反复握手的 1~3 秒卡顿）             */
+/* ------------------------------------------------------------------ */
+
+const POOL_IDLE_MS = 180_000;
+
+interface PooledEntry {
+  client: Client;
+  dead: boolean;
+  idleTimer: NodeJS.Timeout | null;
+}
+
+const clientPool = new Map<string, PooledEntry>();
+const connectingPool = new Map<string, Promise<PooledEntry>>();
+
+function touchPoolEntry(serverId: string, entry: PooledEntry) {
+  if (entry.idleTimer) clearTimeout(entry.idleTimer);
+  entry.idleTimer = setTimeout(() => {
+    invalidatePooledClient(serverId);
+  }, POOL_IDLE_MS);
+  entry.idleTimer.unref?.();
+}
+
+export function invalidatePooledClient(serverId: string) {
+  const entry = clientPool.get(serverId);
+  if (!entry) return;
+  entry.dead = true;
+  if (entry.idleTimer) clearTimeout(entry.idleTimer);
+  clientPool.delete(serverId);
+  try {
+    entry.client.end();
+  } catch {
+    /* ignore */
+  }
+}
+
+export function invalidateAllPooledClients() {
+  for (const id of [...clientPool.keys()]) invalidatePooledClient(id);
+}
+
+async function getPooledEntry(server: ServerRecord): Promise<PooledEntry> {
+  const existing = clientPool.get(server.id);
+  if (existing && !existing.dead) {
+    touchPoolEntry(server.id, existing);
+    return existing;
+  }
+  if (existing) invalidatePooledClient(server.id);
+
+  const pending = connectingPool.get(server.id);
+  if (pending) return pending;
+
+  const p = (async () => {
+    const client = await connectTransient(server);
+    const entry: PooledEntry = { client, dead: false, idleTimer: null };
+    const cleanup = () => {
+      entry.dead = true;
+      if (clientPool.get(server.id) === entry) {
+        if (entry.idleTimer) clearTimeout(entry.idleTimer);
+        clientPool.delete(server.id);
+      }
+    };
+    client.on('error', cleanup);
+    client.on('end', cleanup);
+    client.on('close', cleanup);
+    clientPool.set(server.id, entry);
+    touchPoolEntry(server.id, entry);
+    return entry;
+  })();
+
+  connectingPool.set(server.id, p);
+  try {
+    return await p;
+  } finally {
+    if (connectingPool.get(server.id) === p) connectingPool.delete(server.id);
+  }
+}
+
+async function withPooledClient<T>(server: ServerRecord, fn: (client: Client) => Promise<T>): Promise<T> {
+  let entry = await getPooledEntry(server);
+  try {
+    const res = await fn(entry.client);
+    touchPoolEntry(server.id, entry);
+    return res;
+  } catch (err: any) {
+    const msg = String(err?.message ?? err ?? '');
+    const isConnErr =
+      entry.dead || /not connected|closed|econnreset|epipe|etimedout|channel open/i.test(msg);
+    if (isConnErr) {
+      invalidatePooledClient(server.id);
+      entry = await getPooledEntry(server);
+      const res = await fn(entry.client);
+      touchPoolEntry(server.id, entry);
+      return res;
+    }
+    throw err;
+  }
+}
+
+/** 执行一条命令并收集输出（自动复用 SSH 连接池） */
 export async function execOn(server: ServerRecord, command: string, timeoutMs = 20000) {
   const started = Date.now();
-  const client = await connectTransient(server);
+  return withPooledClient(server, (client) => {
+    return new Promise<{ code: number | null; stdout: string; stderr: string; durationMs: number }>(
+      (resolve, reject) => {
+        let settled = false;
+        let streamRef: ClientChannel | null = null;
+        const killer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          try {
+            streamRef?.close();
+          } catch {
+            /* ignore */
+          }
+          reject(new Error(`命令执行超时（${timeoutMs}ms）`));
+        }, timeoutMs);
 
-  return new Promise<{ code: number | null; stdout: string; stderr: string; durationMs: number }>(
-    (resolve, reject) => {
-      const killer = setTimeout(() => {
-        client.end();
-        reject(new Error(`命令执行超时（${timeoutMs}ms）`));
-      }, timeoutMs);
-
-      client.exec(command, (err, stream) => {
-        if (err) {
-          clearTimeout(killer);
-          client.end();
-          return reject(err);
-        }
-        let stdout = '';
-        let stderr = '';
-        stream.setEncoding('utf8');
-        stream.stderr.setEncoding('utf8');
-        stream.on('data', (chunk: string) => {
-          stdout += chunk;
+        client.exec(command, (err, stream) => {
+          if (err) {
+            clearTimeout(killer);
+            if (!settled) {
+              settled = true;
+              reject(err);
+            }
+            return;
+          }
+          streamRef = stream;
+          let stdout = '';
+          let stderr = '';
+          stream.setEncoding('utf8');
+          stream.stderr.setEncoding('utf8');
+          stream.on('data', (chunk: string) => {
+            stdout += chunk;
+          });
+          stream.stderr.on('data', (chunk: string) => {
+            stderr += chunk;
+          });
+          stream.on('error', (streamErr: Error) => {
+            clearTimeout(killer);
+            if (!settled) {
+              settled = true;
+              reject(streamErr);
+            }
+          });
+          stream.on('close', (code: number | null) => {
+            clearTimeout(killer);
+            if (!settled) {
+              settled = true;
+              resolve({ code, stdout, stderr, durationMs: Date.now() - started });
+            }
+          });
         });
-        stream.stderr.on('data', (chunk: string) => {
-          stderr += chunk;
-        });
-        stream.on('close', (code: number | null) => {
-          clearTimeout(killer);
-          client.end();
-          resolve({ code, stdout, stderr, durationMs: Date.now() - started });
-        });
-      });
-    },
-  );
+      },
+    );
+  });
 }
 
 /** 连通性探测：只看能否握手 + 延迟 */
@@ -265,12 +383,14 @@ export function listSessions() {
 
 export function closeAllSessions() {
   for (const id of [...sessions.keys()]) closeSession(id);
+  invalidateAllPooledClients();
 }
 
 export function closeServerSessions(serverId: string) {
   for (const s of [...sessions.values()]) {
     if (s.serverId === serverId) closeSession(s.id);
   }
+  invalidatePooledClient(serverId);
 }
 
 /* ------------------------------------------------------------------ */
@@ -343,23 +463,37 @@ export async function detectOs(server: ServerRecord): Promise<string> {
 }
 
 /* ------------------------------------------------------------------ */
-/*  SFTP 文件管理                                                      */
+/*  SFTP 文件管理（统一复用连接池，仅结束 SFTP 子通道）                  */
 /* ------------------------------------------------------------------ */
+
+async function withSftp<T>(server: ServerRecord, fn: (sftp: SFTPWrapper) => Promise<T>): Promise<T> {
+  return withPooledClient(server, (client) => {
+    return new Promise<T>((resolve, reject) => {
+      client.sftp(async (err, sftp) => {
+        if (err) return reject(err);
+        try {
+          const result = await fn(sftp);
+          resolve(result);
+        } catch (e) {
+          reject(e);
+        } finally {
+          try {
+            sftp.end();
+          } catch {
+            /* ignore */
+          }
+        }
+      });
+    });
+  });
+}
 
 /** 用 SFTP 列目录，返回结构化条目（含软链接指向目录的真实识别） */
 export async function listRemoteDir(server: ServerRecord, remotePath: string): Promise<RemoteFileEntry[]> {
-  const client = await connectTransient(server);
-  return new Promise((resolve, reject) => {
-    client.sftp((err, sftp) => {
-      if (err) {
-        client.end();
-        return reject(err);
-      }
+  return withSftp(server, (sftp) => {
+    return new Promise((resolve, reject) => {
       sftp.readdir(remotePath, async (err2, list) => {
-        if (err2) {
-          client.end();
-          return reject(err2);
-        }
+        if (err2) return reject(err2);
         try {
           const entries: RemoteFileEntry[] = await Promise.all(
             list
@@ -399,10 +533,8 @@ export async function listRemoteDir(server: ServerRecord, remotePath: string): P
             if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
             return a.name.localeCompare(b.name);
           });
-          client.end();
           resolve(entries);
         } catch (e) {
-          client.end();
           reject(e);
         }
       });
@@ -427,32 +559,16 @@ export async function uploadFile(
   remotePath: string,
   onProgress?: (transferred: number, total: number) => void,
 ): Promise<void> {
-  const client = await connectTransient(server);
-  return new Promise((resolve, reject) => {
-    client.sftp(async (err, sftp) => {
-      if (err) {
-        client.end();
-        return reject(err);
-      }
-      try {
-        const stat = await fs.stat(localPath);
-        const total = stat.size;
-        sftp.fastPut(
-          localPath,
-          remotePath,
-          {
-            step: (transferred) => onProgress?.(transferred, total),
-          },
-          (err2) => {
-            client.end();
-            if (err2) return reject(err2);
-            resolve();
-          },
-        );
-      } catch (e) {
-        client.end();
-        reject(e);
-      }
+  const stat = await fs.stat(localPath);
+  const total = stat.size;
+  return withSftp(server, (sftp) => {
+    return new Promise((resolve, reject) => {
+      sftp.fastPut(
+        localPath,
+        remotePath,
+        { step: (transferred) => onProgress?.(transferred, total) },
+        (err2) => (err2 ? reject(err2) : resolve()),
+      );
     });
   });
 }
@@ -465,24 +581,15 @@ export async function downloadFile(
   onProgress?: (transferred: number, total: number) => void,
 ): Promise<void> {
   await fs.mkdir(path.dirname(localPath), { recursive: true });
-  const client = await connectTransient(server);
-  return new Promise((resolve, reject) => {
-    client.sftp((err, sftp) => {
-      if (err) {
-        client.end();
-        return reject(err);
-      }
+  return withSftp(server, (sftp) => {
+    return new Promise((resolve, reject) => {
       sftp.stat(remotePath, (_errStat, st) => {
         const total = st?.size ?? 0;
         sftp.fastGet(
           remotePath,
           localPath,
           { step: (transferred) => onProgress?.(transferred, total) },
-          (err2) => {
-            client.end();
-            if (err2) return reject(err2);
-            resolve();
-          },
+          (err2) => (err2 ? reject(err2) : resolve()),
         );
       });
     });
@@ -491,18 +598,9 @@ export async function downloadFile(
 
 /** 删除远端文件或目录 */
 export async function deleteRemote(server: ServerRecord, remotePath: string, isDir: boolean): Promise<void> {
-  const client = await connectTransient(server);
-  return new Promise((resolve, reject) => {
-    client.sftp((err, sftp) => {
-      if (err) {
-        client.end();
-        return reject(err);
-      }
-      const done = (e?: Error | null) => {
-        client.end();
-        if (e) return reject(e);
-        resolve();
-      };
+  return withSftp(server, (sftp) => {
+    return new Promise((resolve, reject) => {
+      const done = (e?: Error | null) => (e ? reject(e) : resolve());
       if (isDir) sftp.rmdir(remotePath, done);
       else sftp.unlink(remotePath, done);
     });
@@ -511,38 +609,20 @@ export async function deleteRemote(server: ServerRecord, remotePath: string, isD
 
 /** 创建目录 */
 export async function mkdirRemote(server: ServerRecord, remotePath: string): Promise<void> {
-  const client = await connectTransient(server);
-  return new Promise((resolve, reject) => {
-    client.sftp((err, sftp) => {
-      if (err) {
-        client.end();
-        return reject(err);
-      }
-      sftp.mkdir(remotePath, (e) => {
-        client.end();
-        if (e) return reject(e);
-        resolve();
-      });
+  return withSftp(server, (sftp) => {
+    return new Promise((resolve, reject) => {
+      sftp.mkdir(remotePath, (e) => (e ? reject(e) : resolve()));
     });
   });
 }
 
 /** 读取远端文本文件（用于内置编辑器，上限 1MB 并严格校验 UTF-8） */
 export async function readRemoteFile(server: ServerRecord, remotePath: string, maxBytes = 1024 * 1024): Promise<string> {
-  const client = await connectTransient(server);
-  return new Promise((resolve, reject) => {
-    client.sftp((err, sftp) => {
-      if (err) {
-        client.end();
-        return reject(err);
-      }
+  return withSftp(server, (sftp) => {
+    return new Promise((resolve, reject) => {
       sftp.stat(remotePath, (statErr, st) => {
-        if (statErr) {
-          client.end();
-          return reject(statErr);
-        }
+        if (statErr) return reject(statErr);
         if (st.size > maxBytes) {
-          client.end();
           return reject(new Error('文件超过 1 MB，不支持内置编辑'));
         }
         const chunks: Buffer[] = [];
@@ -556,12 +636,8 @@ export async function readRemoteFile(server: ServerRecord, remotePath: string, m
           }
           chunks.push(chunk);
         });
-        rs.on('error', (e: Error) => {
-          client.end();
-          reject(e);
-        });
+        rs.on('error', (e: Error) => reject(e));
         rs.on('end', () => {
-          client.end();
           const buf = Buffer.concat(chunks);
           try {
             const text = new TextDecoder('utf-8', { fatal: true }).decode(buf);
@@ -577,22 +653,11 @@ export async function readRemoteFile(server: ServerRecord, remotePath: string, m
 
 /** 写入远端文本文件：直接通过 SFTP 覆写原路径，保持原文件的权限、属主、软链接指向和 SELinux 上下文不变 */
 export async function writeRemoteFile(server: ServerRecord, remotePath: string, content: string): Promise<void> {
-  const client = await connectTransient(server);
-  return new Promise<void>((resolve, reject) => {
-    client.sftp((err, sftp) => {
-      if (err) {
-        client.end();
-        return reject(err);
-      }
+  return withSftp(server, (sftp) => {
+    return new Promise<void>((resolve, reject) => {
       const stream = sftp.createWriteStream(remotePath, { flags: 'w' });
-      stream.on('close', () => {
-        client.end();
-        resolve();
-      });
-      stream.on('error', (e: Error) => {
-        client.end();
-        reject(e);
-      });
+      stream.on('close', () => resolve());
+      stream.on('error', (e: Error) => reject(e));
       stream.end(Buffer.from(content, 'utf8'));
     });
   });
@@ -609,9 +674,9 @@ export async function homeDir(server: ServerRecord): Promise<string> {
   }
 }
 
-/** 获取远程主机进程列表（按 CPU 降序） */
+/** 获取远程主机进程列表（按 CPU 降序，兼容 GNU ps 与 BusyBox/BSD ps） */
 export async function listProcesses(server: ServerRecord): Promise<ProcessInfo[]> {
-  const cmd = `ps -eo pid,user,%cpu,%mem,comm,args --sort=-%cpu 2>/dev/null || ps aux`;
+  const cmd = `ps -eo pid,user,%cpu,%mem,comm,args --sort=-%cpu 2>/dev/null | head -n 65 || ps -eo pid,user,pcpu,pmem,comm,args 2>/dev/null`;
   const { stdout } = await execOn(server, cmd, 10000);
   const lines = stdout.trim().split(/\r?\n/);
   if (lines.length <= 1) return [];
@@ -632,17 +697,24 @@ export async function listProcesses(server: ServerRecord): Promise<ProcessInfo[]
       results.push({ pid, user, cpu, mem, comm, args });
     }
   }
+  results.sort((a, b) => b.cpu - a.cpu || b.mem - a.mem);
   return results.slice(0, 50);
 }
 
-/** 终止远程进程 */
+/** 终止远程进程（非 root 用户自动回退 sudo -n） */
 export async function killProcess(
   server: ServerRecord,
   pid: number,
   signal: string = 'TERM'
 ): Promise<boolean> {
+  const safePid = Math.floor(Number(pid));
+  if (!Number.isFinite(safePid) || safePid <= 1) return false;
   const safeSig = signal === 'KILL' ? 'KILL' : 'TERM';
-  const { code } = await execOn(server, `kill -${safeSig} ${pid}`, 8000);
+  const { code } = await execOn(
+    server,
+    `kill -${safeSig} ${safePid} 2>/dev/null || sudo -n kill -${safeSig} ${safePid}`,
+    8000
+  );
   return code === 0;
 }
 
@@ -667,14 +739,15 @@ export async function listSystemServices(server: ServerRecord): Promise<{ availa
   ];
   const cmd = `systemctl list-units --type=service ${patterns.join(' ')} --no-pager --no-legend 2>/dev/null || systemctl list-units --type=service --state=running --no-pager --no-legend 2>/dev/null | head -n 30`;
   try {
-    const { stdout, code } = await execOn(server, cmd, 8000);
+    const { stdout } = await execOn(server, cmd, 8000);
     if (!stdout.trim()) {
       return { available: true, services: [] };
     }
     const lines = stdout.trim().split(/\r?\n/);
     const services: SystemServiceInfo[] = [];
     for (const line of lines) {
-      const parts = line.trim().split(/\s+/);
+      const cleaned = line.replace(/^[●*○×]\s+/, '').trim();
+      const parts = cleaned.split(/\s+/);
       if (parts.length >= 4) {
         const rawName = parts[0].replace(/\.service$/, '');
         const load = parts[1];
@@ -690,24 +763,34 @@ export async function listSystemServices(server: ServerRecord): Promise<{ availa
   }
 }
 
-/** 管理系统服务 (start, stop, restart, logs) */
+/** 管理系统服务 (start, stop, restart, logs)，支持 sudo -n 提权回退 */
 export async function manageSystemService(
   server: ServerRecord,
   serviceName: string,
   action: 'start' | 'stop' | 'restart' | 'logs'
 ): Promise<{ ok: boolean; message: string }> {
-  const safeName = serviceName.replace(/[^a-zA-Z0-9_\-\.]/g, '');
+  const safeName = serviceName.replace(/[^a-zA-Z0-9_\-\.@]/g, '');
+  if (!safeName) return { ok: false, message: '非法服务名称' };
   if (action === 'logs') {
-    const { stdout, stderr } = await execOn(server, `journalctl -u ${safeName} -n 35 --no-pager 2>&1`, 8000);
+    const { stdout, stderr } = await execOn(
+      server,
+      `journalctl -u ${safeName} -n 45 --no-pager 2>&1 || sudo -n journalctl -u ${safeName} -n 45 --no-pager 2>&1`,
+      8000
+    );
     return { ok: true, message: stdout || stderr || '(暂无日志)' };
   }
-  const { code, stderr, stdout } = await execOn(server, `systemctl ${action} ${safeName}`, 10000);
+  const { code, stderr, stdout } = await execOn(
+    server,
+    `systemctl ${action} ${safeName} 2>&1 || sudo -n systemctl ${action} ${safeName} 2>&1`,
+    12000
+  );
   return { ok: code === 0, message: stderr || stdout || '操作完成' };
 }
 
 /** 获取 Docker 容器列表 */
 export async function listDockerContainers(server: ServerRecord): Promise<{ hasDocker: boolean; containers: DockerContainerInfo[] }> {
-  const cmd = `docker ps -a --format '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.State}}\t{{.Ports}}' 2>/dev/null`;
+  const fmt = '{{.ID}}\\t{{.Names}}\\t{{.Image}}\\t{{.Status}}\\t{{.State}}\\t{{.Ports}}';
+  const cmd = `docker ps -a --format '${fmt}' 2>/dev/null || sudo -n docker ps -a --format '${fmt}' 2>/dev/null`;
   try {
     const { stdout, code } = await execOn(server, cmd, 8000);
     if (code !== 0) return { hasDocker: false, containers: [] };
@@ -734,11 +817,20 @@ export async function manageDockerContainer(
   action: 'restart' | 'stop' | 'start' | 'logs'
 ): Promise<{ ok: boolean; message: string }> {
   const safeId = containerId.replace(/[^a-zA-Z0-9_\-\.]/g, '');
+  if (!safeId) return { ok: false, message: '非法容器标识' };
   if (action === 'logs') {
-    const { stdout, stderr } = await execOn(server, `docker logs --tail 40 ${safeId} 2>&1`, 8000);
+    const { stdout, stderr } = await execOn(
+      server,
+      `docker logs --tail 50 ${safeId} 2>&1 || sudo -n docker logs --tail 50 ${safeId} 2>&1`,
+      8000
+    );
     return { ok: true, message: stdout || stderr || '(无日志输出)' };
   }
-  const { code, stderr, stdout } = await execOn(server, `docker ${action} ${safeId}`, 12000);
+  const { code, stderr, stdout } = await execOn(
+    server,
+    `docker ${action} ${safeId} 2>&1 || sudo -n docker ${action} ${safeId} 2>&1`,
+    12000
+  );
   return { ok: code === 0, message: stderr || stdout || '操作完成' };
 }
 

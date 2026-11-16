@@ -76,7 +76,9 @@ export function ServersPage({ onAdd }: { onAdd?: () => void }) {
   };
 
   const handleDelete = async (s: ServerRecord) => {
-    if (!confirm(`确定移除「${s.name}」？\n这将删除本地保存的连接信息和凭据，不会影响服务器本身。`)) return;
+    const ok = confirm(`确定移除「${s.name}」？\n这将删除本地保存的连接信息和凭据，不会影响服务器本身。`);
+    setTimeout(() => window.focus(), 0);
+    if (!ok) return;
     try {
       await unwrap(window.nebula.servers.remove(s.id));
       toast({ type: 'success', title: '已移除', desc: s.name });

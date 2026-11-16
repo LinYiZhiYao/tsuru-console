@@ -87,8 +87,9 @@ export function SystemLogsManager({ server }: { server: ServerRecord }) {
   };
 
   useEffect(() => {
+    setLogContent('');
     void fetchLogs();
-  }, [activePreset.id, lineCount]);
+  }, [server.id, activePreset.id, lineCount]);
 
   useEffect(() => {
     if (autoScroll && logContainerRef.current) {
@@ -110,8 +111,8 @@ export function SystemLogsManager({ server }: { server: ServerRecord }) {
   return (
     <div className="p-6 space-y-4 max-w-[1300px] mx-auto select-text flex flex-col h-full">
       {/* 顶部工具栏 */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-[rgba(16,24,40,0.08)] shadow-sm">
-        {/* 预设切换 Tabs */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-white rounded-2xl border border-[rgba(15,23,42,0.07)] shadow-sm">
+        {/* 预设切换 Tabs (流体胶囊风格) */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
           {PRESETS.map((p) => {
             const active = activePreset.id === p.id;
@@ -119,15 +120,17 @@ export function SystemLogsManager({ server }: { server: ServerRecord }) {
             return (
               <button
                 key={p.id}
-                onClick={() => {
-                  setActivePreset(p);
-                  void fetchLogs(p);
-                }}
-                className={`flex items-center gap-1.5 px-3 h-[32px] rounded-xl text-[12px] font-medium transition-all shrink-0 ${
+                onClick={() => setActivePreset(p)}
+                className={`flex items-center gap-1.5 px-3.5 h-[32px] rounded-full text-[12px] font-medium transition-all shrink-0 ${
                   active
-                    ? 'bg-[#12171f] text-white shadow-sm'
-                    : 'text-[#5b6473] hover:bg-[rgba(16,24,40,0.05)] hover:text-[#12171f]'
+                    ? 'text-white shadow-sm'
+                    : 'text-[#5b6473] bg-[#f0f4f9] hover:bg-[#e1e9f4] hover:text-[#1f1f1f]'
                 }`}
+                style={
+                  active
+                    ? { background: 'linear-gradient(135deg, #1b6ef3 0%, #0f9d70 100%)' }
+                    : undefined
+                }
               >
                 <Icon size={13} style={{ color: active ? '#ffffff' : p.color }} />
                 <span>{p.name}</span>

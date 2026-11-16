@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft,
@@ -208,8 +208,8 @@ export function ServerDetailPage({ serverId }: { serverId: string }) {
           </div>
         </div>
 
-        {/* Tab 切换 */}
-        <div className="flex items-center gap-0.5 relative" data-detail-tabs>
+        {/* Tab 切换 (流体胶囊栏) */}
+        <div className="flex items-center gap-1 pb-2.5 overflow-x-auto hide-scrollbar relative" data-detail-tabs>
           {TABS.map((t) => {
             const active = tab === t.key;
             const Icon = t.icon;
@@ -217,21 +217,28 @@ export function ServerDetailPage({ serverId }: { serverId: string }) {
               <button
                 key={t.key}
                 onClick={() => selectTab(t.key)}
-                className="relative h-[32px] px-3 flex items-center gap-1.5"
-                style={{ color: active ? '#12171f' : '#6b7484', transition: 'color 160ms' }}
+                className="relative h-[32px] px-3.5 rounded-full flex items-center gap-1.5 shrink-0"
+                style={{ color: active ? '#0d1b2a' : '#5b6473', transition: 'color 160ms' }}
               >
-                <Icon size={12} className="relative z-10" />
-                <span className="relative z-10 text-[12px]" style={{ fontWeight: active ? 550 : 450 }}>
-                  {t.label}
-                </span>
                 {active && (
                   <motion.div
                     layoutId="detail-tab-underline"
-                    className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full"
-                    style={{ background: '#0f9d70' }}
+                    className="absolute inset-0 rounded-full"
+                    style={{
+                      background: 'linear-gradient(90deg, rgba(27,110,243,0.12) 0%, rgba(15,157,112,0.14) 100%)',
+                      border: '1px solid rgba(15,157,112,0.22)',
+                    }}
                     transition={{ type: 'spring', stiffness: 520, damping: 38 }}
                   />
                 )}
+                <Icon
+                  size={12.5}
+                  className="relative z-10"
+                  style={{ color: active ? '#0f9d70' : '#6b7484' }}
+                />
+                <span className="relative z-10 text-[12px]" style={{ fontWeight: active ? 600 : 480 }}>
+                  {t.label}
+                </span>
               </button>
             );
           })}
@@ -240,15 +247,16 @@ export function ServerDetailPage({ serverId }: { serverId: string }) {
 
       {/* 内容区 */}
       <div className="flex-1 overflow-hidden relative">
-        <AnimatePresence mode="wait">
+        <AnimatePresence initial={false}>
           {tab !== 'terminal' && (
             <motion.div
               key={tab}
-              initial={{ opacity: 0, y: 6 }}
+              initial={{ opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              exit={{ opacity: 0, transition: { duration: 0.06 } }}
+              transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
               className="absolute inset-0 overflow-y-auto"
+              style={{ willChange: 'transform, opacity' }}
             >
               {tab === 'overview' && (
                 <Overview
@@ -320,7 +328,6 @@ function Overview({
   const [copiedIp, setCopiedIp] = useState(false);
 
   const runDiag = async (title: string, cmd: string) => {
-    if (server.status === 'offline') return;
     setDiagLoading(true);
     try {
       const r = await unwrap(window.nebula.batch.exec([server.id], cmd));
@@ -473,7 +480,7 @@ function Overview({
             </div>
             <button
               onClick={() => runDiag('监听端口 (TCP/UDP)', 'ss -tulpn 2>/dev/null || netstat -tulpn')}
-              disabled={diagLoading || server.status === 'offline'}
+              disabled={diagLoading}
               className="mt-3 btn btn-ghost h-[28px] text-[11.5px] w-full flex items-center justify-center gap-1 border border-[rgba(16,24,40,0.08)] hover:bg-[#0f9d70] hover:text-white"
             >
               {diagLoading ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
@@ -502,7 +509,7 @@ function Overview({
                   'find / -xdev -type f -size +100M -exec ls -lh {} + 2>/dev/null | sort -rh -k 5 | head -8'
                 )
               }
-              disabled={diagLoading || server.status === 'offline'}
+              disabled={diagLoading}
               className="mt-3 btn btn-ghost h-[28px] text-[11.5px] w-full flex items-center justify-center gap-1 border border-[rgba(16,24,40,0.08)] hover:bg-[#0f9d70] hover:text-white"
             >
               {diagLoading ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
@@ -531,7 +538,7 @@ function Overview({
                   'docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "未安装或未运行 Docker"'
                 )
               }
-              disabled={diagLoading || server.status === 'offline'}
+              disabled={diagLoading}
               className="mt-3 btn btn-ghost h-[28px] text-[11.5px] w-full flex items-center justify-center gap-1 border border-[rgba(16,24,40,0.08)] hover:bg-[#0f9d70] hover:text-white"
             >
               {diagLoading ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
@@ -560,7 +567,7 @@ function Overview({
                   'last -n 6 2>/dev/null; echo "=== 近期失败尝试 ==="; grep "Failed password" /var/log/secure 2>/dev/null | tail -n 6 || journalctl _SYSTEMD_UNIT=sshd.service -n 6 2>&1'
                 )
               }
-              disabled={diagLoading || server.status === 'offline'}
+              disabled={diagLoading}
               className="mt-3 btn btn-ghost h-[28px] text-[11.5px] w-full flex items-center justify-center gap-1 border border-[rgba(16,24,40,0.08)] hover:bg-[#0f9d70] hover:text-white"
             >
               {diagLoading ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
@@ -685,37 +692,43 @@ function Overview({
 
 /** 概览页底部的实时网络 / 负载信息带 */
 function NetworkStrip({ series, latest }: { series: MetricSample[]; latest?: MetricSample }) {
-  const recent = series.slice(-40);
-  const ts = recent.map((s) => s.t);
-
-  // netRx/netTx 是累计字节，速率要靠相邻采样点差分
-  const rxRate: (number | null)[] = [];
-  const txRate: (number | null)[] = [];
-  for (let i = 1; i < recent.length; i++) {
-    const dt = (recent[i].t - recent[i - 1].t) / 1000;
-    const cur = recent[i];
-    const prev = recent[i - 1];
-    if (dt <= 0 || cur.netRx === undefined || prev.netRx === undefined) {
-      rxRate.push(null);
-      txRate.push(null);
-      continue;
+  const { ts, curRx, curTx, netSeries, loadSeries } = useMemo(() => {
+    const recent = series.slice(-40);
+    const ts = recent.map((s) => s.t);
+    const rxRate: (number | null)[] = [];
+    const txRate: (number | null)[] = [];
+    for (let i = 1; i < recent.length; i++) {
+      const dt = (recent[i].t - recent[i - 1].t) / 1000;
+      const cur = recent[i];
+      const prev = recent[i - 1];
+      if (dt <= 0 || cur.netRx === undefined || prev.netRx === undefined) {
+        rxRate.push(null);
+        txRate.push(null);
+        continue;
+      }
+      rxRate.push(Math.max(0, (cur.netRx - prev.netRx) / dt));
+      txRate.push(Math.max(0, ((cur.netTx ?? 0) - (prev.netTx ?? 0)) / dt));
     }
-    rxRate.push(Math.max(0, (cur.netRx - prev.netRx) / dt));
-    txRate.push(Math.max(0, ((cur.netTx ?? 0) - (prev.netTx ?? 0)) / dt));
-  }
-  // 首点补 null 让 x 轴长度与 timestamps 对齐
-  rxRate.unshift(null);
-  txRate.unshift(null);
-
-  const curRx = rxRate[rxRate.length - 1] ?? 0;
-  const curTx = txRate[txRate.length - 1] ?? 0;
-  const load = recent.map((s) => (s.load1 !== undefined ? Number(s.load1.toFixed(2)) : null));
+    rxRate.unshift(null);
+    txRate.unshift(null);
+    const load = recent.map((s) => (s.load1 !== undefined ? Number(s.load1.toFixed(2)) : null));
+    return {
+      ts,
+      curRx: rxRate[rxRate.length - 1] ?? 0,
+      curTx: txRate[txRate.length - 1] ?? 0,
+      netSeries: [
+        { name: '网络下行', data: rxRate, color: '#0891a8', area: true },
+        { name: '网络上行', data: txRate, color: '#7454d8' },
+      ],
+      loadSeries: [{ name: '负载', data: load, color: '#d97706', area: true }],
+    };
+  }, [series]);
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.24, duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ delay: 0.08, duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
       className="grid grid-cols-[1fr_1fr] gap-3 flex-1 min-h-[180px] mt-3"
     >
       <div className="panel px-4 pt-3 pb-2 flex flex-col min-h-0">
@@ -739,10 +752,7 @@ function NetworkStrip({ series, latest }: { series: MetricSample[]; latest?: Met
             yUnit=""
             yFormatter={(v) => fmtRate(v).replace('/s', '')}
             valueFormatter={(v) => fmtRate(v)}
-            series={[
-              { name: '网络下行', data: rxRate, color: '#0891a8', area: true },
-              { name: '网络上行', data: txRate, color: '#7454d8' },
-            ]}
+            series={netSeries}
           />
         ) : (
           <div className="flex-1 grid place-items-center">
@@ -763,7 +773,7 @@ function NetworkStrip({ series, latest }: { series: MetricSample[]; latest?: Met
             timestamps={ts}
             height="100%"
             yUnit=""
-            series={[{ name: '负载', data: load, color: '#d97706', area: true }]}
+            series={loadSeries}
           />
         ) : (
           <div className="flex-1 grid place-items-center">

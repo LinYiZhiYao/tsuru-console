@@ -28,7 +28,6 @@ export function ProcessManager({ server }: Props) {
   const [killingPid, setKillingPid] = useState<number | null>(null);
 
   const loadProcesses = useCallback(async () => {
-    if (server.status === 'offline') return;
     setLoading(true);
     try {
       const data = await unwrap(window.nebula.servers.processes(server.id));
@@ -38,9 +37,10 @@ export function ProcessManager({ server }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [server.id, server.status, toast]);
+  }, [server.id, toast]);
 
   useEffect(() => {
+    setProcesses([]);
     void loadProcesses();
   }, [loadProcesses]);
 
@@ -49,7 +49,9 @@ export function ProcessManager({ server }: Props) {
     const msg = isKill
       ? `确定强制杀死进程 PID: ${proc.pid} (${proc.comm})？(SIGKILL -9)`
       : `确定终止进程 PID: ${proc.pid} (${proc.comm})？(SIGTERM -15)`;
-    if (!confirm(msg)) return;
+    const ok = confirm(msg);
+    setTimeout(() => window.focus(), 0);
+    if (!ok) return;
 
     setKillingPid(proc.pid);
     try {
@@ -142,7 +144,7 @@ export function ProcessManager({ server }: Props) {
           className="btn btn-ghost"
           style={{ height: 30 }}
           onClick={() => void loadProcesses()}
-          disabled={loading || server.status === 'offline'}
+          disabled={loading}
           title="刷新进程列表"
         >
           {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
@@ -152,20 +154,20 @@ export function ProcessManager({ server }: Props) {
 
       {/* 进程列表主体 */}
       <div className="flex-1 min-h-0 panel overflow-hidden flex flex-col">
-        {server.status === 'offline' ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-            <AlertTriangle size={24} className="text-[#a8b0bd] mb-2" />
-            <p className="text-[13px] font-medium text-[#12171f]">服务器处于离线状态</p>
-            <p className="text-[11px] text-[#8b94a3] mt-1">请先确保 SSH 连通后再查看实时进程</p>
-          </div>
-        ) : loading && processes.length === 0 ? (
+        {loading && processes.length === 0 ? (
           <div className="flex-1 flex items-center justify-center gap-2 text-[#8b94a3]">
             <Loader2 size={14} className="animate-spin" />
             <span className="text-[12px]">正在采集活跃进程快照…</span>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center text-[12px] text-[#a8b0bd]">
-            没有匹配的进程
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+            <AlertTriangle size={24} className="text-[#a8b0bd] mb-2" />
+            <p className="text-[13px] font-medium text-[#12171f]">
+              {server.status === 'offline' ? '暂未获取到进程（节点当前不可达）' : '没有匹配的进程'}
+            </p>
+            <p className="text-[11px] text-[#8b94a3] mt-1">
+              {server.status === 'offline' ? '可检查网络连通性后点击右上角「刷新」重试' : '换个筛选关键词试试'}
+            </p>
           </div>
         ) : (
           <div className="flex-1 min-h-0 overflow-y-auto">

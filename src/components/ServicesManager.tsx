@@ -38,7 +38,6 @@ export function ServicesManager({ server }: Props) {
   const [copied, setCopied] = useState(false);
 
   const loadData = useCallback(async () => {
-    if (server.status === 'offline') return;
     setLoading(true);
     try {
       const [svcRes, docRes] = await Promise.all([
@@ -53,9 +52,12 @@ export function ServicesManager({ server }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [server.id, server.status, toast]);
+  }, [server.id, toast]);
 
   useEffect(() => {
+    setServices([]);
+    setContainers([]);
+    setHasDocker(false);
     void loadData();
   }, [loadData]);
 
@@ -141,7 +143,7 @@ export function ServicesManager({ server }: Props) {
           className="btn btn-ghost"
           style={{ height: 30 }}
           onClick={() => void loadData()}
-          disabled={loading || server.status === 'offline'}
+          disabled={loading}
         >
           {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
           刷新
@@ -150,16 +152,16 @@ export function ServicesManager({ server }: Props) {
 
       {/* 内容卡片区 */}
       <div className="flex-1 min-h-0 panel overflow-hidden flex flex-col">
-        {server.status === 'offline' ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-            <AlertTriangle size={24} className="text-[#a8b0bd] mb-2" />
-            <p className="text-[13px] font-medium text-[#12171f]">服务器离线中</p>
-            <p className="text-[11px] text-[#8b94a3] mt-1">请先保证主机连通性</p>
-          </div>
-        ) : loading && services.length === 0 && containers.length === 0 ? (
+        {loading && services.length === 0 && containers.length === 0 ? (
           <div className="flex-1 flex items-center justify-center gap-2 text-[#8b94a3]">
             <Loader2 size={14} className="animate-spin" />
             <span className="text-[12px]">正在读取服务与容器状态…</span>
+          </div>
+        ) : server.status === 'offline' && services.length === 0 && containers.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+            <AlertTriangle size={24} className="text-[#a8b0bd] mb-2" />
+            <p className="text-[13px] font-medium text-[#12171f]">暂未拉取到服务列表（节点当前不可达）</p>
+            <p className="text-[11px] text-[#8b94a3] mt-1">可检查主机连通性后点击右上角「刷新」重试</p>
           </div>
         ) : activeSubTab === 'systemd' ? (
           /* Systemd 服务列表 */
@@ -198,7 +200,7 @@ export function ServicesManager({ server }: Props) {
                           >
                             <span
                               className={`w-1.5 h-1.5 rounded-full ${
-                                isActive ? 'bg-[#0f9d70] animate-pulse' : isFailed ? 'bg-[#dc2f4b]' : 'bg-[#a8b0bd]'
+                                isActive ? 'bg-[#0f9d70]' : isFailed ? 'bg-[#dc2f4b]' : 'bg-[#a8b0bd]'
                               }`}
                             />
                             {svc.active} ({svc.sub})
@@ -303,7 +305,7 @@ export function ServicesManager({ server }: Props) {
                               color: isUp ? '#0f9d70' : '#8b94a3',
                             }}
                           >
-                            <span className={`w-1.5 h-1.5 rounded-full ${isUp ? 'bg-[#0f9d70] animate-pulse' : 'bg-[#a8b0bd]'}`} />
+                            <span className={`w-1.5 h-1.5 rounded-full ${isUp ? 'bg-[#0f9d70]' : 'bg-[#a8b0bd]'}`} />
                             {c.status}
                           </span>
                         </td>

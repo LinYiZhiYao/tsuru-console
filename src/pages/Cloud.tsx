@@ -78,7 +78,9 @@ export function CloudPage() {
       action === 'terminate'
         ? `\n\n⚠️ 销毁实例不可恢复，实例数据将被永久删除。\n\n请确认实例 ID：${inst.instanceId}`
         : '';
-    if (!confirm(`确定对「${inst.name}」执行「${labels[action]}」？${warn}`)) return;
+    const ok = confirm(`确定对「${inst.name}」执行「${labels[action]}」？${warn}`);
+    setTimeout(() => window.focus(), 0);
+    if (!ok) return;
 
     setPowering(inst.instanceId);
     try {
@@ -259,7 +261,9 @@ export function CloudPage() {
                       className="btn btn-danger"
                       style={{ height: 27 }}
                       onClick={async () => {
-                        if (!confirm(`确定移除云账号「${acc.label}」？\n\n已纳管的服务器记录会保留，不会删除。`)) return;
+                        const ok = confirm(`确定移除云账号「${acc.label}」？\n\n已纳管的服务器记录会保留，不会删除。`);
+                        setTimeout(() => window.focus(), 0);
+                        if (!ok) return;
                         await unwrap(window.nebula.cloud.deleteAccount(acc.id));
                         toast({ type: 'success', title: '已移除云账号' });
                         await loadAccounts();

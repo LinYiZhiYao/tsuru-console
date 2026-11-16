@@ -120,7 +120,9 @@ export function FileExplorer({ serverId }: { serverId: string }) {
   };
 
   const handleDelete = async (e: RemoteFileEntry) => {
-    if (!confirm(`确定删除「${e.name}」？\n\n路径：${e.path}\n\n此操作不可撤销。`)) return;
+    const ok = confirm(`确定删除「${e.name}」？\n\n路径：${e.path}\n\n此操作不可撤销。`);
+    setTimeout(() => window.focus(), 0);
+    if (!ok) return;
     setBusy(e.path);
     try {
       await unwrap(window.nebula.files.remove(serverId, e.path, e.isDir));
@@ -172,7 +174,8 @@ export function FileExplorer({ serverId }: { serverId: string }) {
     try {
       const sep = navigator.userAgent.includes('Windows') ? '\\' : '/';
       const info = await unwrap(window.nebula.app.info());
-      const localPath = `${info.userDataPath}${sep}downloads${sep}${e.name}`;
+      const safeName = e.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') || 'download.bin';
+      const localPath = `${info.userDataPath}${sep}downloads${sep}${serverId.slice(0, 8)}-${safeName}`;
       await unwrap(window.nebula.files.download(serverId, e.path, localPath));
       toast({ type: 'success', title: '已下载', desc: localPath });
       void window.nebula.app.showItemInFolder(localPath);

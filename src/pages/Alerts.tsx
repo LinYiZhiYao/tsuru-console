@@ -44,7 +44,9 @@ export function AlertsPage() {
   }, []);
 
   const handleDeleteRule = async (r: AlertRule) => {
-    if (!confirm(`确定删除规则「${r.name}」？`)) return;
+    const ok = confirm(`确定删除规则「${r.name}」？`);
+    setTimeout(() => window.focus(), 0);
+    if (!ok) return;
     await unwrap(window.nebula.metrics.deleteRule(r.id));
     toast({ type: 'success', title: '规则已删除' });
     await loadRules();
@@ -99,7 +101,9 @@ export function AlertsPage() {
             className="btn btn-ghost"
             style={{ height: 28 }}
             onClick={async () => {
-              if (!confirm('清空全部告警记录？')) return;
+              const ok = confirm('清空全部告警记录？');
+              setTimeout(() => window.focus(), 0);
+              if (!ok) return;
               await clearAlerts();
               toast({ type: 'success', title: '已清空告警记录' });
             }}
@@ -121,16 +125,16 @@ export function AlertsPage() {
         </button>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
-        <AnimatePresence mode="wait">
+      <div className="flex-1 min-h-0 overflow-hidden relative">
+        <AnimatePresence initial={false}>
           {tab === 'rules' ? (
             <motion.div
               key="rules"
-              initial={{ opacity: 0, y: 6 }}
+              initial={{ opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.2 }}
-              className="min-h-full flex flex-col justify-center"
+              exit={{ opacity: 0, transition: { duration: 0.06 } }}
+              transition={{ duration: 0.14 }}
+              className="absolute inset-0 overflow-y-auto px-5 py-4 flex flex-col justify-center"
             >
               {rules.length === 0 ? (
                 <div className="h-full grid place-items-center">
@@ -240,11 +244,11 @@ export function AlertsPage() {
           ) : (
             <motion.div
               key="events"
-              initial={{ opacity: 0, y: 6 }}
+              initial={{ opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.2 }}
-              className="min-h-full flex flex-col justify-center"
+              exit={{ opacity: 0, transition: { duration: 0.06 } }}
+              transition={{ duration: 0.14 }}
+              className="absolute inset-0 overflow-y-auto px-5 py-4 flex flex-col justify-center"
             >
               {alerts.length === 0 ? (
                 <div className="h-full grid place-items-center">

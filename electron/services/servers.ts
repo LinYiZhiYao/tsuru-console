@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { db, vault, metricsStore } from '../db';
-import { detectOs, closeServerSessions } from './ssh';
+import { detectOs, closeServerSessions, invalidatePooledClient } from './ssh';
 import type { ServerRecord, ServerSecret } from '../types';
 
 export interface CreateServerInput {
@@ -66,6 +66,7 @@ export async function updateServer(
   patch: Partial<CreateServerInput>,
 ): Promise<ServerRecord> {
   if (patch.secret) await setSecret(id, patch.secret);
+  invalidatePooledClient(id);
   let updated: ServerRecord | undefined;
   await db.update((d) => {
     const s = d.servers.find((x) => x.id === id);

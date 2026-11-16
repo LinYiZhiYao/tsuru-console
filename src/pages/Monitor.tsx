@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Activity, RefreshCw, Loader2, Server as ServerIcon, ChevronDown } from 'lucide-react';
 import { useApp } from '@/stores/app';
@@ -51,18 +51,33 @@ export function MonitorPage() {
     return () => clearInterval(t);
   }, [load]);
 
-  const rangeMs = RANGES.find((r) => r.key === range)!.ms;
-  const cutoff = Date.now() - rangeMs;
-  const visible = series.filter((s) => s.t >= cutoff);
+  const { visible, ts, cpuMemSeries, diskSeries, loadSeries } = useMemo(() => {
+    const rangeMs = RANGES.find((r) => r.key === range)!.ms;
+    const cutoff = Date.now() - rangeMs;
+    const visible = series.filter((s) => s.t >= cutoff);
+    const ts = visible.map((s) => s.t);
+    const cpu = visible.map((s) => (s.cpu !== undefined ? Number(s.cpu.toFixed(2)) : null));
+    const mem = visible.map((s) =>
+      s.memTotal ? Number((((s.memUsed ?? 0) / s.memTotal) * 100).toFixed(2)) : null,
+    );
+    const disk = visible.map((s) =>
+      s.diskTotal ? Number((((s.diskUsed ?? 0) / s.diskTotal) * 100).toFixed(2)) : null,
+    );
+    const load = visible.map((s) => (s.load1 !== undefined ? Number(s.load1.toFixed(2)) : null));
+    return {
+      visible,
+      ts,
+      cpuMemSeries: [
+        { name: 'CPU', data: cpu, color: '#7454d8', area: true },
+        { name: '内存', data: mem, color: '#0891a8', area: true },
+      ],
+      diskSeries: [{ name: '磁盘', data: disk, color: '#0f9d70', area: true }],
+      loadSeries: [{ name: '负载', data: load, color: '#d97706', area: true }],
+    };
+  }, [series, range]);
 
   const server = servers.find((s) => s.id === selectedId);
   const latest = visible[visible.length - 1];
-
-  const ts = visible.map((s) => s.t);
-  const cpu = visible.map((s) => (s.cpu !== undefined ? Number(s.cpu.toFixed(2)) : null));
-  const mem = visible.map((s) =>
-    s.memTotal ? Number((((s.memUsed ?? 0) / s.memTotal) * 100).toFixed(2)) : null,
-  );
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -216,10 +231,7 @@ export function MonitorPage() {
                 yMax={100}
                 yUnit="%"
                 height="100%"
-                series={[
-                  { name: 'CPU', data: cpu, color: '#7454d8', area: true },
-                  { name: '内存', data: mem, color: '#0891a8', area: true },
-                ]}
+                series={cpuMemSeries}
               />
             </div>
 
@@ -231,16 +243,7 @@ export function MonitorPage() {
                   yMax={100}
                   yUnit="%"
                   height="100%"
-                  series={[
-                    {
-                      name: '磁盘',
-                      data: visible.map((s) =>
-                        s.diskTotal ? Number((((s.diskUsed ?? 0) / s.diskTotal) * 100).toFixed(2)) : null,
-                      ),
-                      color: '#0f9d70',
-                      area: true,
-                    },
-                  ]}
+                  series={diskSeries}
                 />
               </div>
               <div className="panel px-3.5 pt-3 pb-1.5 flex flex-col">
@@ -248,14 +251,7 @@ export function MonitorPage() {
                 <LineChart
                   timestamps={ts}
                   height="100%"
-                  series={[
-                    {
-                      name: '负载',
-                      data: visible.map((s) => (s.load1 !== undefined ? Number(s.load1.toFixed(2)) : null)),
-                      color: '#d97706',
-                      area: true,
-                    },
-                  ]}
+                  series={loadSeries}
                 />
               </div>
             </div>

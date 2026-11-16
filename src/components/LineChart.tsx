@@ -3,7 +3,7 @@ import * as echarts from 'echarts/core';
 import { LineChart as ELineChart } from 'echarts/charts';
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
-import { useMemo } from 'react';
+import { useMemo, memo } from 'react';
 
 /**
  * 按需注册 echarts 模块。
@@ -43,7 +43,7 @@ const SPLIT_LINE = { lineStyle: { color: 'rgba(16,24,40,0.07)', type: 'dashed' a
  * 统一风格的折线图容器。
  * 所有图表共享同一套坐标轴样式、网格与 tooltip，避免每个页面各写一套导致视觉不一致。
  */
-export function LineChart({
+export const LineChart = memo(function LineChart({
   timestamps,
   series,
   height = 180,
@@ -58,7 +58,7 @@ export function LineChart({
   const option = useMemo(
     () => ({
       animation: true,
-      animationDuration: 320,
+      animationDuration: 150,
       animationEasing: 'cubicOut' as const,
       backgroundColor: 'transparent',
       grid: {
@@ -190,4 +190,4 @@ export function LineChart({
       />
     </div>
   );
-}
+});

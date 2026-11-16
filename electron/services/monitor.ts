@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { db, metricsStore } from '../db';
 import { emit } from '../bus';
-import { collectMetrics, probeServer } from './ssh';
+import { collectMetrics, probeServer, invalidatePooledClient } from './ssh';
 import type { AlertEvent, AlertRule, MetricSample, ServerRecord } from '../types';
 
 /**
@@ -82,14 +82,14 @@ async function collectAll() {
     }
 
     if (Object.keys(fresh).length > 0) {
-      const store = await metricsStore.read();
-      for (const [serverId, sample] of Object.entries(fresh)) {
-        const arr = store.series[serverId] ?? [];
-        arr.push(sample);
-        if (arr.length > MAX_SAMPLES) arr.splice(0, arr.length - MAX_SAMPLES);
-        store.series[serverId] = arr;
-      }
-      await metricsStore.write(store);
+      await metricsStore.update((store) => {
+        for (const [serverId, sample] of Object.entries(fresh)) {
+          const arr = store.series[serverId] ?? [];
+          arr.push(sample);
+          if (arr.length > MAX_SAMPLES) arr.splice(0, arr.length - MAX_SAMPLES);
+          store.series[serverId] = arr;
+        }
+      });
     }
 
     // 即使所有机器都离线（fresh 为空），也要评估离线告警规则
@@ -115,6 +115,7 @@ async function probeAll() {
           await updateServerStatus(server, 'online', latencyMs);
         }
       } catch {
+        invalidatePooledClient(server.id);
         if (server.status !== 'offline') {
           await updateServerStatus(server, 'offline');
         }
@@ -233,13 +234,19 @@ export function stopMonitor() {
 export async function sampleNow(serverId: string) {
   const server = (await db.read()).servers.find((s) => s.id === serverId);
   if (!server) throw new Error('服务器不存在');
+  const t0 = Date.now();
   const sample = await collectMetrics(server);
-  const store = await metricsStore.read();
-  const arr = store.series[serverId] ?? [];
-  arr.push(sample);
-  if (arr.length > MAX_SAMPLES) arr.splice(0, arr.length - MAX_SAMPLES);
-  store.series[serverId] = arr;
-  await metricsStore.write(store);
+  const latencyMs = Date.now() - t0;
+  if (server.status !== 'online' || server.latencyMs === undefined) {
+    await updateServerStatus(server, 'online', latencyMs);
+  }
+  await metricsStore.update((store) => {
+    const arr = store.series[serverId] ?? [];
+    arr.push(sample);
+    if (arr.length > MAX_SAMPLES) arr.splice(0, arr.length - MAX_SAMPLES);
+    store.series[serverId] = arr;
+  });
+  await evaluateAlerts({ [serverId]: sample });
   return sample;
 }
 

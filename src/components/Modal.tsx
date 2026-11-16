@@ -56,17 +56,17 @@ export function Modal({ open, onClose, title, subtitle, children, footer, width 
             }}
           />
           <motion.div
-            initial={{ opacity: 0, y: 14 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8, transition: { duration: 0.14 } }}
-            transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+            exit={{ opacity: 0, y: 6, transition: { duration: 0.1 } }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
             data-modal-panel=""
             className="relative flex flex-col max-h-[86vh] rounded-2xl overflow-hidden"
             style={{
               width,
               background: '#ffffff',
-              border: '1px solid rgba(16,24,40,0.075)',
-              boxShadow: '0 32px 80px -24px rgba(16,24,40,0.28)',
+              border: '1px solid rgba(16,24,40,0.08)',
+              boxShadow: '0 14px 36px -12px rgba(16,24,40,0.22)',
               willChange: 'transform, opacity',
             }}
           >

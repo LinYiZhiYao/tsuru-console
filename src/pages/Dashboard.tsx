@@ -11,23 +11,28 @@ import {
   MemoryStick,
   Network,
   TerminalSquare,
-  FolderTree,
   Zap,
   ShieldCheck,
+  Sparkles,
+  Send,
+  Loader2,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { useApp } from '@/stores/app';
 import { StatusDot, Chip, MiniBar, EmptyState } from '@/components/Primitives';
 import { LineChart } from '@/components/LineChart';
-import { PROVIDER_META, fmtBytes, fmtPercent, fmtRelative, unwrap } from '@/lib/utils';
+import { Modal } from '@/components/Modal';
+import { PROVIDER_META, fmtBytes, fmtPercent, fmtRelative, unwrap, cleanError } from '@/lib/utils';
 import type { ServerRecord, MetricSample } from '@/types';
 
 const container = {
   hidden: {},
-  show: { transition: { staggerChildren: 0.045, delayChildren: 0.02 } },
+  show: { transition: { staggerChildren: 0.02 } },
 };
 const item = {
-  hidden: { opacity: 0, y: 10 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] as const } },
+  hidden: { opacity: 0, y: 6 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.16, ease: [0.22, 1, 0.36, 1] as const } },
 };
 
 /**
@@ -43,6 +48,44 @@ export function DashboardPage() {
   const openTerminalTab = useApp((s) => s.openTerminalTab);
 
   const [samples, setSamples] = useState<Record<string, MetricSample[]>>({});
+  const [quickCmd, setQuickCmd] = useState('');
+  const [runningQuick, setRunningQuick] = useState(false);
+  const [quickResult, setQuickResult] = useState<{
+    title: string;
+    cmd: string;
+    items: Array<{ name: string; ok: boolean; out: string; ms: number }>;
+  } | null>(null);
+  const [copiedQuick, setCopiedQuick] = useState(false);
+
+  const runQuickOps = async (cmdToRun?: string, label?: string) => {
+    const cmd = (cmdToRun ?? quickCmd).trim();
+    if (!cmd) return;
+    const online = servers.filter((s) => s.status === 'online');
+    const targets = (online.length ? online : servers).map((s) => s.id);
+    if (!targets.length) return;
+    setRunningQuick(true);
+    try {
+      const res = await unwrap(window.nebula.batch.exec(targets, cmd));
+      setQuickResult({
+        title: label || '全域快捷指令回显',
+        cmd,
+        items: res.map((r) => ({
+          name: r.serverName,
+          ok: r.ok,
+          out: (r.stdout || r.stderr || '(执行成功，无输出)').trim(),
+          ms: r.durationMs,
+        })),
+      });
+    } catch (e) {
+      setQuickResult({
+        title: label || '全域快捷指令回显',
+        cmd,
+        items: [{ name: '执行失败', ok: false, out: cleanError(e), ms: 0 }],
+      });
+    } finally {
+      setRunningQuick(false);
+    }
+  };
 
   const serverIdsKey = useMemo(() => servers.map((s) => s.id).join(','), [servers]);
 
@@ -134,14 +177,69 @@ export function DashboardPage() {
     return { ts, cpu };
   }, [servers, samples]);
 
+  const trendSeries = useMemo(
+    () => [{ name: 'CPU 均值', data: trend.cpu, color: '#7454d8', area: true }],
+    [trend.cpu],
+  );
+
   return (
-    <div className="h-full flex flex-col overflow-hidden px-5 py-4">
+    <div className="h-full flex flex-col overflow-hidden px-5 py-3.5">
       <motion.div
         variants={container}
         initial="hidden"
         animate="show"
         className="flex-1 min-h-0 flex flex-col gap-3"
       >
+        {/* 全域快捷指令与智能巡检舱 */}
+        <motion.div
+          variants={item}
+          className="panel px-4 py-2.5 shrink-0 flex flex-col xl:flex-row xl:items-center justify-between gap-2.5"
+        >
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="omni-bar flex-1 h-[34px] px-3.5 flex items-center gap-2">
+              <Sparkles size={13} className="text-[#1b6ef3] shrink-0" />
+              <input
+                value={quickCmd}
+                onChange={(e) => setQuickCmd(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void runQuickOps();
+                }}
+                placeholder="向在线服务器下发即时指令（如 uptime && free -h），或点击右侧胶囊一键巡检…"
+                className="w-full bg-transparent text-[12px] text-[#1f1f1f] outline-none font-mono placeholder:font-sans placeholder-[#9aa0a6]"
+              />
+            </div>
+            <button
+              onClick={() => void runQuickOps()}
+              disabled={!quickCmd.trim() || runningQuick || servers.length === 0}
+              className="btn btn-aurora h-[34px] px-3.5 text-[11.5px] shrink-0"
+            >
+              {runningQuick ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+              立即执行
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar shrink-0">
+            {[
+              { label: '✨ 全网负载快照', cmd: 'uptime && free -h' },
+              { label: '💾 根分区容量', cmd: 'df -h /' },
+              { label: '🐳 容器运行概览', cmd: 'docker ps --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}" 2>/dev/null || echo "未运行 Docker"' },
+              { label: '🔍 监听端口扫描', cmd: 'ss -tulpn 2>/dev/null | head -n 12' },
+            ].map((chip) => (
+              <button
+                key={chip.label}
+                disabled={runningQuick || servers.length === 0}
+                onClick={() => {
+                  setQuickCmd(chip.cmd);
+                  void runQuickOps(chip.cmd, chip.label);
+                }}
+                className="quick-chip"
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        </motion.div>
+
         {/* 顶部四张指标卡 */}
         <motion.div variants={item} className="grid grid-cols-4 gap-3 shrink-0">
           <StatCard
@@ -322,7 +420,7 @@ export function DashboardPage() {
                   yMax={100}
                   yUnit="%"
                   height="100%"
-                  series={[{ name: 'CPU 均值', data: trend.cpu, color: '#7454d8', area: true }]}
+                  series={trendSeries}
                 />
               </div>
             ) : (
@@ -364,6 +462,51 @@ export function DashboardPage() {
           </div>
         </motion.div>
       </motion.div>
+
+      <Modal
+        open={Boolean(quickResult)}
+        onClose={() => setQuickResult(null)}
+        title={quickResult?.title ?? '全域快捷指令结果'}
+        subtitle={quickResult ? `$ ${quickResult.cmd}` : undefined}
+        width={680}
+        footer={
+          <>
+            <button
+              className="btn btn-ghost"
+              onClick={() => {
+                if (!quickResult) return;
+                const txt = quickResult.items.map((r) => `[${r.name}]\n${r.out}`).join('\n\n');
+                void navigator.clipboard.writeText(txt);
+                setCopiedQuick(true);
+                setTimeout(() => setCopiedQuick(false), 1500);
+              }}
+            >
+              {copiedQuick ? <Check size={12} className="text-[#0f9d70]" /> : <Copy size={12} />}
+              {copiedQuick ? '已复制' : '复制全部'}
+            </button>
+            <button className="btn btn-primary" onClick={() => setQuickResult(null)}>
+              关闭
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3 max-h-[52vh] overflow-y-auto pr-1">
+          {quickResult?.items.map((r, i) => (
+            <div key={i} className="rounded-xl overflow-hidden border border-[rgba(15,23,42,0.08)]">
+              <div className="px-3.5 py-2 bg-[#f0f4f9] flex items-center justify-between text-[11.5px]">
+                <span className="font-semibold text-[#1f1f1f] flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${r.ok ? 'bg-[#0f9d70]' : 'bg-[#dc2f4b]'}`} />
+                  {r.name}
+                </span>
+                <span className="font-mono text-[#747775]">{r.ms} ms</span>
+              </div>
+              <pre className="p-3.5 bg-[#0e131b] text-[#88e7b9] font-mono text-[11.5px] leading-relaxed overflow-x-auto whitespace-pre-wrap break-all">
+                {r.out}
+              </pre>
+            </div>
+          ))}
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -392,12 +535,13 @@ function StatCard({
       onClick={onClick}
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.99 }}
-      transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
       className="panel px-3.5 py-3 text-left group relative overflow-hidden"
     >
+      {/* 用径向渐变替代 filter: blur()，零高斯模糊计算开销 */}
       <div
-        className="absolute -top-8 -right-8 w-20 h-20 rounded-full opacity-[0.07] group-hover:opacity-[0.13] transition-opacity duration-300"
-        style={{ background: accent, filter: 'blur(18px)' }}
+        className="absolute inset-0 opacity-60 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"
+        style={{ background: `radial-gradient(circle at 92% 12%, ${accent}1a 0%, transparent 55%)` }}
       />
       <div className="relative flex items-start justify-between">
         <div className="min-w-0">
@@ -441,9 +585,9 @@ function ServerRow({
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: -6 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: 0.08 + index * 0.03, duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: Math.min(index * 0.015, 0.09), duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
       onClick={onClick}
       className="row-interactive px-4 py-2.5 flex items-center gap-3 group shrink-0 border-b border-[rgba(16,24,40,0.045)] last:border-b-0"
     >
@@ -565,15 +709,13 @@ function QuickAction({
       onClick={onClick}
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.985 }}
-      transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
       className="panel px-3.5 py-3 text-left flex items-center gap-2.5 group overflow-hidden relative"
     >
-      {/* hover 时的柔光，与 StatCard 语言一致。
-          opacity 必须交给 className 的 group-hover 控制：写内联 opacity:0 会覆盖 Tailwind，
-          导致 hover 柔光永远不显示。 */}
+      {/* 用轻量径向渐变做 hover 柔光，避免 filter: blur() 在软件渲染下反复光栅化 */}
       <div
-        className="absolute -top-6 -right-6 w-16 h-16 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-        style={{ background: color, filter: 'blur(20px)' }}
+        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"
+        style={{ background: `radial-gradient(circle at 92% 14%, ${color}22 0%, transparent 56%)` }}
       />
       <div
         className="w-8 h-8 rounded-[9px] flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105"

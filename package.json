@@ -1,6 +1,6 @@
 {
   "name": "tsuru-console",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Tsuru Console - 鹤 · 现代化多云多服务器运维控制台",
   "main": "dist-electron/main.js",
@@ -55,7 +55,7 @@
     "appId": "com.tsuru.console",
     "productName": "Tsuru Console",
     "directories": {
-      "output": "release-build-20261112-224614",
+      "output": "release-build-20261116-215114",
       "buildResources": "build"
     },
     "files": [

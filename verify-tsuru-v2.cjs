@@ -46,29 +46,75 @@ async function main() {
   if (!page) throw new Error('No renderer page found');
 
   await page.waitForLoadState('domcontentloaded');
-  await sleep(2200);
+  await sleep(4200);
 
-  // 1. Check title / brand
+  // 1. Check title / brand & ensure zero Gemini strings
   const titleText = await page.evaluate(() => document.body.innerText.toLowerCase());
   const hasBrand = titleText.includes('tsuru') && titleText.includes('console');
-  console.log('1. Brand Tsuru Console found:', hasBrand);
+  const hasGemini = titleText.includes('gemini');
+  console.log('1. Brand Tsuru Console found:', hasBrand, '| Has Gemini text:', hasGemini);
+  if (hasGemini) throw new Error('Found unexpected Gemini text on Dashboard');
 
   // 2. Check server 8.140.205.93 presence
   const hasServer = titleText.includes('8.140.205.93');
   console.log('2. User server 8.140.205.93 found in UI:', hasServer);
   await page.screenshot({ path: path.join(SHOTS, '01-dashboard.png') });
 
+  // Measure software rendering FPS helper
+  const measFps = () => page.evaluate(() => new Promise((resolve) => {
+    const times = [];
+    let last = performance.now();
+    let count = 0;
+    function step(now) {
+      times.push(now - last);
+      last = now;
+      if (++count < 55) requestAnimationFrame(step);
+      else {
+        const avg = times.reduce((a, b) => a + b, 0) / times.length;
+        const max = Math.max(...times);
+        const over20 = times.filter((t) => t > 20).length;
+        const over33 = times.filter((t) => t > 33).length;
+        resolve({ fps: +(1000 / avg).toFixed(1), avgMs: +avg.toFixed(2), maxMs: +max.toFixed(2), over20, over33 });
+      }
+    }
+    requestAnimationFrame(step);
+  }));
+
+  console.log('2b. Idle FPS (GPU=0):', await measFps());
+  await page.click('text=服务器');
+  console.log('2c. Nav Servers FPS (GPU=0):', await measFps());
+  await page.click('text=总览');
+  console.log('2d. Nav Dashboard FPS (GPU=0):', await measFps());
+
   // 3. Test Command Palette (Ctrl+K)
   await page.keyboard.press('Control+k');
-  await sleep(600);
-  const paletteOpen = await page.evaluate(() => !!document.querySelector('input[placeholder*="快捷导航"]'));
-  console.log('3. Command Palette opened:', paletteOpen);
+  await sleep(300);
+  const paletteOpen = await page.evaluate(() => !!document.querySelector('input[placeholder*="即刻执行"]'));
+  const paletteHasGemini = await page.evaluate(() => document.body.innerText.toLowerCase().includes('gemini'));
+  console.log('3. Command Palette opened:', paletteOpen, '| Has Gemini text:', paletteHasGemini);
+  if (paletteHasGemini) throw new Error('Found unexpected Gemini text inside Command Palette');
   if (paletteOpen) {
     await page.keyboard.type('8.140');
-    await sleep(400);
+    await sleep(350);
     await page.screenshot({ path: path.join(SHOTS, '02-command-palette.png') });
     await page.keyboard.press('Escape');
-    await sleep(600);
+    await sleep(400);
+  }
+
+  // Verify 0 backdrop-filter and 0 filter: blur() across all DOM elements
+  const filterStats = await page.evaluate(() => {
+    let backdropCount = 0;
+    let blurCount = 0;
+    for (const el of document.querySelectorAll('*')) {
+      const s = getComputedStyle(el);
+      if (s.backdropFilter && s.backdropFilter !== 'none') backdropCount++;
+      if (s.filter && s.filter.includes('blur')) blurCount++;
+    }
+    return { backdropCount, blurCount };
+  });
+  console.log('3b. Expensive filter stats:', filterStats);
+  if (filterStats.backdropCount > 0 || filterStats.blurCount > 0) {
+    throw new Error('Unexpected blur filter detected: ' + JSON.stringify(filterStats));
   }
 
   // 4. Click server to open Detail page

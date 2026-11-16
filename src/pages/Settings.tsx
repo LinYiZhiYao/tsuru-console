@@ -114,7 +114,7 @@ export function SettingsPage() {
         <Section title="关于" icon={Info}>
           <div className="space-y-1.5">
             <Row label="应用" value="Tsuru Console (鹤)" />
-            <Row label="版本" value="0.1.0" />
+            <Row label="版本" value="0.2.0" />
             <Row label="Electron" value={info?.versions.electron ?? '—'} mono />
             <Row label="Node" value={info?.versions.node ?? '—'} mono />
             <Row label="Chromium" value={info?.versions.chrome ?? '—'} mono />

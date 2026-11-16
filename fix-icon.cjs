@@ -46,8 +46,8 @@ if (!fs.existsSync(bak)) {
 
 const args = [
   exe,
-  '--set-version-string', 'FileDescription', pkg.description || pkg.productName,
-  '--set-version-string', 'ProductName', pkg.productName || 'Nebula Console',
+  '--set-version-string', 'FileDescription', pkg.description || prodName,
+  '--set-version-string', 'ProductName', prodName,
   '--set-file-version', pkg.version,
   '--set-product-version', pkg.version,
   '--set-icon', ico,

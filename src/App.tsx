@@ -16,14 +16,14 @@ import { SettingsPage } from '@/pages/Settings';
 import { AddServerDialog } from '@/components/AddServerDialog';
 import { CommandPalette } from '@/components/CommandPalette';
 
-/** 页面转场：淡入 + 轻微上浮，不做横向滑动（横向滑动在切换不同信息密度的页面时很晕） */
+/** 页面转场：紧凑轻量淡入 + 轻微上浮（不做 mode="wait" 阻塞，切页 0 等待立刻响应） */
 const pageVariants = {
-  initial: { opacity: 0, y: 8 },
+  initial: { opacity: 0, y: 6 },
   animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -6 },
+  exit: { opacity: 0, transition: { duration: 0.08 } },
 };
 
-const pageTransition = { duration: 0.24, ease: [0.22, 1, 0.36, 1] as const };
+const pageTransition = { duration: 0.16, ease: [0.22, 1, 0.36, 1] as const };
 
 function PageShell({ children }: { children: React.ReactNode }) {
   return (
@@ -34,6 +34,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
       exit="exit"
       transition={pageTransition}
       className="absolute inset-0 overflow-hidden"
+      style={{ willChange: 'transform, opacity' }}
     >
       <PresenceContext.Provider value={null}>{children}</PresenceContext.Provider>
     </motion.div>
@@ -126,7 +127,7 @@ export default function App() {
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden" style={{ background: '#f4f6f8' }}>
+    <div className="h-full flex flex-col overflow-hidden" style={{ background: '#f0f4f9' }}>
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -135,10 +136,16 @@ export default function App() {
             onRefresh={handleRefresh}
             onOpenPalette={() => setPaletteOpen(true)}
           />
-          <main className="relative flex-1 overflow-hidden">
+          <main
+            className="relative flex-1 overflow-hidden rounded-tl-[18px] mr-1.5 mb-1.5 rounded-tr-[10px] rounded-b-[10px]"
+            style={{
+              background: '#f8fafd',
+              border: '1px solid rgba(15, 23, 42, 0.06)',
+            }}
+          >
             {booted ? (
               <>
-                <AnimatePresence mode="wait">
+                <AnimatePresence initial={false}>
                   {route.name !== 'terminal' && (
                     <PageShell key={JSON.stringify(route)}>{renderPage()}</PageShell>
                   )}

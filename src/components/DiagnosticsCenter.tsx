@@ -1,5 +1,4 @@
-import { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect } from 'react';
 import {
   Activity,
   ShieldCheck,
@@ -20,10 +19,10 @@ import {
   Loader2,
   Download,
   Flame,
-  FileText,
   ShieldAlert,
-  Server,
   Zap,
+  Sparkles,
+  Send,
 } from 'lucide-react';
 import { unwrap, cleanError } from '@/lib/utils';
 import type { ServerRecord } from '@/types';
@@ -133,7 +132,7 @@ export function DiagnosticsCenter({ server }: { server: ServerRecord }) {
   const [activeTool, setActiveTool] = useState<ToolItem>(TOOLS[0]);
   const [runningId, setRunningId] = useState<string | null>(null);
   const [outputs, setOutputs] = useState<Record<string, { stdout: string; stderr: string; code: number | null; durationMs: number }>>({});
-  const [filterQuery, setFilterQuery] = useState('');
+  const [customCmd, setCustomCmd] = useState('');
   const [copied, setCopied] = useState(false);
 
   // 全机体检状态
@@ -141,6 +140,32 @@ export function DiagnosticsCenter({ server }: { server: ServerRecord }) {
   const [healthScore, setHealthScore] = useState<number | null>(null);
   const [checkItems, setCheckItems] = useState<CheckItem[]>([]);
   const [scanTime, setScanTime] = useState<number | null>(null);
+
+  // 切换服务器时清空上一台机器的体检缓存与输出，防止跨节点数据串台
+  useEffect(() => {
+    setOutputs({});
+    setHealthScore(null);
+    setCheckItems([]);
+    setScanTime(null);
+    setRunningId(null);
+    setIsScanning(false);
+  }, [server.id]);
+
+  const runCustomCommand = async (cmdToRun?: string) => {
+    const cmd = (cmdToRun ?? customCmd).trim();
+    if (!cmd) return;
+    const customTool: ToolItem = {
+      id: 'custom-cmd',
+      name: '自定义指令诊断',
+      category: '性能',
+      desc: '交互式即时排障指令',
+      cmd,
+      icon: Sparkles,
+      color: '#1b6ef3',
+      badgeBg: 'rgba(27,110,243,0.1)',
+    };
+    await runSingleTool(customTool);
+  };
 
   const runSingleTool = async (tool: ToolItem) => {
     setRunningId(tool.id);
@@ -525,76 +550,123 @@ export function DiagnosticsCenter({ server }: { server: ServerRecord }) {
         </div>
 
         {/* 右侧：命令详情与实时输出面板 */}
-        <div className="lg:col-span-7 flex flex-col rounded-2xl border bg-white overflow-hidden shadow-sm border-[rgba(16,24,40,0.08)] min-h-[520px]">
-          {/* 面板头部 */}
-          <div className="p-4 border-b border-[rgba(16,24,40,0.06)] bg-[#fafbfc] flex items-center justify-between">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <activeTool.icon size={15} style={{ color: activeTool.color }} />
-                <h4 className="text-[13.5px] font-bold text-[#12171f]">{activeTool.name}</h4>
-                <span className="text-[11px] text-[#8b94a3] font-mono">
-                  {currentResult ? `${currentResult.durationMs}ms` : '未执行'}
-                </span>
+        <div className="lg:col-span-7 flex flex-col gap-3">
+          {/* 自定义排障指令舱 */}
+          <div className="p-3.5 rounded-2xl bg-white border border-[rgba(15,23,42,0.08)] shadow-sm space-y-2.5">
+            <div className="flex items-center gap-2">
+              <div className="omni-bar flex-1 h-[38px] px-3.5 flex items-center gap-2.5">
+                <Sparkles size={14} className="text-[#1b6ef3] shrink-0" />
+                <input
+                  value={customCmd}
+                  onChange={(e) => setCustomCmd(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void runCustomCommand();
+                  }}
+                  placeholder="输入任意排障 Shell 指令并回车（如 systemctl --failed、df -i、lsof -i :80）…"
+                  className="w-full bg-transparent text-[12.5px] text-[#1f1f1f] outline-none font-mono placeholder:font-sans placeholder-[#9aa0a6]"
+                />
               </div>
-              <p className="text-[11px] text-[#a8b0bd] font-mono mt-1 truncate">
-                $ {activeTool.cmd}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              {currentResult && (
-                <button
-                  onClick={copyCurrentOutput}
-                  className="btn btn-ghost h-[30px] px-2.5 text-[11.5px] flex items-center gap-1.5"
-                  title="复制控制台输出"
-                >
-                  {copied ? <Check size={12} className="text-[#0f9d70]" /> : <Copy size={12} />}
-                  {copied ? '已复制' : '复制'}
-                </button>
-              )}
               <button
-                onClick={() => runSingleTool(activeTool)}
-                disabled={runningId === activeTool.id}
-                className="btn btn-primary h-[30px] px-3 text-[12px] flex items-center gap-1.5"
+                onClick={() => void runCustomCommand()}
+                disabled={!customCmd.trim() || runningId === 'custom-cmd'}
+                className="btn btn-aurora h-[38px] px-4 text-[12px]"
               >
-                {runningId === activeTool.id ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <RefreshCw size={12} />
-                )}
-                {runningId === activeTool.id ? '执行中' : '执行命令'}
+                {runningId === 'custom-cmd' ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                发送执行
               </button>
+            </div>
+            <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar">
+              {[
+                { label: '⚡ Top 15 进程快照', cmd: 'top -b -n 1 | head -n 22' },
+                { label: '❌ 失败的 Systemd 服务', cmd: 'systemctl --failed --no-pager' },
+                { label: '🗂️ Inode 节点余量', cmd: 'df -i' },
+                { label: '🌐 网卡与路由表', cmd: 'ip -br addr && echo "=== 路由 ===" && ip route' },
+              ].map((chip) => (
+                <button
+                  key={chip.label}
+                  onClick={() => {
+                    setCustomCmd(chip.cmd);
+                    void runCustomCommand(chip.cmd);
+                  }}
+                  className="quick-chip"
+                >
+                  {chip.label}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* 面板输出区 */}
-          <div className="flex-1 p-4 bg-[#111827] text-[#e5e7eb] font-mono text-[12px] leading-relaxed overflow-y-auto max-h-[500px]">
-            {runningId === activeTool.id ? (
-              <div className="flex flex-col items-center justify-center py-20 text-[#9ca3af] gap-3">
-                <Loader2 size={24} className="text-[#0f9d70] animate-spin" />
-                <p className="text-[12px]">正在连接主机执行诊断命令…</p>
+          <div className="flex flex-col rounded-2xl border bg-white overflow-hidden shadow-sm border-[rgba(16,24,40,0.08)] min-h-[460px]">
+            {/* 面板头部 */}
+            <div className="p-4 border-b border-[rgba(16,24,40,0.06)] bg-[#fafbfc] flex items-center justify-between">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <activeTool.icon size={15} style={{ color: activeTool.color }} />
+                  <h4 className="text-[13.5px] font-bold text-[#12171f]">{activeTool.name}</h4>
+                  <span className="text-[11px] text-[#8b94a3] font-mono">
+                    {currentResult ? `${currentResult.durationMs}ms` : '未执行'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#a8b0bd] font-mono mt-1 truncate">
+                  $ {activeTool.cmd}
+                </p>
               </div>
-            ) : currentResult ? (
-              <div>
-                {currentResult.stdout && (
-                  <pre className="whitespace-pre-wrap word-break">{currentResult.stdout}</pre>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {currentResult && (
+                  <button
+                    onClick={copyCurrentOutput}
+                    className="btn btn-ghost h-[30px] px-2.5 text-[11.5px] flex items-center gap-1.5"
+                    title="复制控制台输出"
+                  >
+                    {copied ? <Check size={12} className="text-[#0f9d70]" /> : <Copy size={12} />}
+                    {copied ? '已复制' : '复制'}
+                  </button>
                 )}
-                {currentResult.stderr && (
-                  <pre className="whitespace-pre-wrap text-[#f87171] mt-2">
-                    {currentResult.stderr}
-                  </pre>
-                )}
-                {!currentResult.stdout && !currentResult.stderr && (
-                  <p className="text-[#9ca3af]">（命令返回成功，标准输出为空）</p>
-                )}
+                <button
+                  onClick={() => runSingleTool(activeTool)}
+                  disabled={runningId === activeTool.id}
+                  className="btn btn-primary h-[30px] px-3 text-[12px] flex items-center gap-1.5"
+                >
+                  {runningId === activeTool.id ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <RefreshCw size={12} />
+                  )}
+                  {runningId === activeTool.id ? '执行中' : '执行命令'}
+                </button>
               </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-20 text-[#6b7280] gap-2">
-                <TerminalSquare size={28} className="text-[#4b5563]" />
-                <p className="text-[12.5px] text-[#9ca3af]">点击上方「执行命令」或左侧工具卡片开始排查</p>
-                <p className="text-[11px] text-[#6b7280]">支持自动高亮端口占用、大文件路径、Docker 容器与登录日志</p>
-              </div>
-            )}
+            </div>
+
+            {/* 面板输出区 */}
+            <div className="flex-1 p-4 bg-[#111827] text-[#e5e7eb] font-mono text-[12px] leading-relaxed overflow-y-auto max-h-[460px]">
+              {runningId === activeTool.id ? (
+                <div className="flex flex-col items-center justify-center py-20 text-[#9ca3af] gap-3">
+                  <Loader2 size={24} className="text-[#0f9d70] animate-spin" />
+                  <p className="text-[12px]">正在连接主机执行诊断命令…</p>
+                </div>
+              ) : currentResult ? (
+                <div>
+                  {currentResult.stdout && (
+                    <pre className="whitespace-pre-wrap word-break">{currentResult.stdout}</pre>
+                  )}
+                  {currentResult.stderr && (
+                    <pre className="whitespace-pre-wrap text-[#f87171] mt-2">
+                      {currentResult.stderr}
+                    </pre>
+                  )}
+                  {!currentResult.stdout && !currentResult.stderr && (
+                    <p className="text-[#9ca3af]">（命令返回成功，标准输出为空）</p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 text-[#6b7280] gap-2">
+                  <TerminalSquare size={28} className="text-[#4b5563]" />
+                  <p className="text-[12.5px] text-[#9ca3af]">点击上方「执行命令」、胶囊建议或左侧工具卡片开始排查</p>
+                  <p className="text-[11px] text-[#6b7280]">支持自动高亮端口占用、大文件路径、Docker 容器与登录日志</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

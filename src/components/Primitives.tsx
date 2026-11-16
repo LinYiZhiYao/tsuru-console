@@ -16,28 +16,20 @@ const COLORS: Record<string, string> = {
 
 /**
  * 状态指示点。
- * 在线时加一圈扩散脉冲，让「活着」这件事有视觉存在感，
- * 而不是一个静态圆点（静止的绿点看不出是否在更新）。
+ * 在线状态使用静态同心微光环而非 60fps 无限帧循环动画，兼顾辨识度与闲置零 CPU 占用；
+ * 状态变化时平滑过渡透明度。
  */
 export function StatusDot({ status, size = 7 }: StatusDotProps) {
   const color = COLORS[status] ?? COLORS.unknown;
-  const pulse = status === 'online';
+  const ring = status === 'online' ? '0 0 0 3px rgba(15, 157, 112, 0.16)' : undefined;
 
   return (
     <span className="relative inline-flex items-center justify-center shrink-0" style={{ width: size + 6, height: size + 6 }}>
-      {pulse && (
-        <motion.span
-          className="absolute rounded-full"
-          style={{ width: size, height: size, background: color, opacity: 0.5 }}
-          animate={{ scale: [1, 2.2, 1], opacity: [0.45, 0, 0.45] }}
-          transition={{ duration: 2.4, repeat: Infinity, ease: 'easeOut' }}
-        />
-      )}
       <motion.span
         className="rounded-full relative"
-        style={{ width: size, height: size, background: color }}
+        style={{ width: size, height: size, background: color, boxShadow: ring }}
         animate={{ opacity: status === 'unknown' ? 0.5 : 1 }}
-        transition={{ duration: 0.3 }}
+        transition={{ duration: 0.2 }}
       />
     </span>
   );
